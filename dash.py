@@ -127,10 +127,9 @@ if selection.selected_rows:
     elif log_level == "NOT FOUND":
         st.write(
             f"### **{name}** was not found in the list of Bioconductor packages.")
-
     else:
         # change warnings to warning if message count is smaller than 2
-        log_level = "warning" if count < 2 and "W" in log_level else log_level.lower()
+        log_level = "warning" if (int(count) < 2 and "W" in log_level) else log_level.lower()
         st.write(f"### {name} had {count} {log_level} during {stage}.")
 
         for i, message in enumerate(messages):
