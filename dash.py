@@ -124,11 +124,12 @@ def run_dash():
         y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
         color=alt.Color(
             "Log Level",  # type: ignore
-            sort=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
+            sort=["OK", "WARNINGS", "ERROR",
+                  "NOT FOUND", "TIMEOUT"],  # type: ignore
             scale=alt.Scale(  # type: ignore
                 domain=["OK", "WARNINGS", "ERROR",
-                        "NOT FOUND"],  # type: ignore
-                range=["green", "orange", "red", "purple"])  # type: ignore
+                        "NOT FOUND", "TIMEOUT"],  # type: ignore
+                range=["green", "orange", "red", "purple", "blue"])  # type: ignore
         )
     ).configure_axis(
         labelFontSize=18
