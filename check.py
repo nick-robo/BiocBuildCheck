@@ -116,12 +116,18 @@ def get_package_status(
 
     status = {name: [] for name in packages}
 
+    # loop through release and devel
     for data in pages_data:
         for name in packages:
+            # get all hyperlinks
             links = data.find_all("a")
-            package_row = list(filter(lambda x: x.text == name, links))  # pylint: disable=cell-var-from-loop
+            # get the hyperlink who's text is the same as the package name
+            package_row = list(filter(lambda x: x.text == name, links)) # pylint: disable=cell-var-from-loop
 
             if package_row:
+                # get the name of the last class of the link's row (gcard)
+                # NOTE: the classes consist of "compact gcard" followed by the status
+                # or statuses  (e.g. "compact gcard timeout warnings")
                 status[name].append(package_row[0].find_parent(
                     class_="gcard").get("class")[-1].upper())
             else:
@@ -174,6 +180,7 @@ def get_info(status_df: pd.DataFrame) -> None:
         # check if the `error_path` is a str
         error_path = error_path if isinstance(error_path, str) else None
 
+        # deal with cases where package fails a pre-build check (no log)
         if not error_path:
             status_df.loc[idx, "stage"] = "pre-build"  # type: ignore
             status_df.loc[idx, "message_count"] = 1  # type: ignore
@@ -181,16 +188,17 @@ def get_info(status_df: pd.DataFrame) -> None:
                 "(")[-1][:-1]
             continue
 
-        # determine error stage
+        # determine error stage from the error path
         stage = stage_dict[re.split(r"-|\.", error_path)[-2]]
 
+        # get the log URL
         data = get_pages_data(package=name, release=is_release,
                               devel=not is_release, path=error_path)[0]
 
         log = pre.text.replace('â', "'") if (pre := data.find("pre")) else None
 
         if not log:
-            raise Exception("Could not find error/worning log.")
+            raise Exception("Could not find error/warning log.")
 
         log = parse_log(log, status)
 
@@ -209,6 +217,8 @@ def get_info(status_df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    df = get_package_status(["BiocCheck", "S4Vectors"], devel=True)
+    df = get_package_status(["ClassifyR", "ANCOMBC"], devel=True)
     get_info(df)
-    pd.to_pickle(df, "saved.pkl")
+    # pd.to_pickle(df, "saved.pkl")
+
+# %%
