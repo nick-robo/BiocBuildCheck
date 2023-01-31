@@ -16,6 +16,7 @@ from check import get_package_status, get_info
 # ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
 
+
 def aggrid_interactive_table(df: pd.DataFrame):
     """Creates an st-aggrid interactive table based on a dataframe.
 
@@ -43,6 +44,7 @@ def aggrid_interactive_table(df: pd.DataFrame):
 
     return selection
 
+
 @st.cache
 def get_dash_data(packages: Optional[Iterable[str]] = None, force: bool = False) -> tuple[pd.DataFrame, float]:
 
@@ -69,76 +71,78 @@ def parse_input(user_input: str) -> list[str]:
 
     input_list = user_input.strip().split(" ")
 
-    filtered_list = filter(lambda x: not (" " in x or not ""), input_list)
-    return list(input_list)
+    return [x for x in input_list if x]
 
 
-st.write("""
-# Package Status Dashboard
-## A little dashboard for monitoring your Bioconductor packages of interest.
-""")
+def run_dash():
+    st.write("""
+    # Package Status Dashboard
+    ## A little dashboard for monitoring your Bioconductor packages of interest.
+    """)
 
-package_input = st.text_input(
-    label="Type in some Bioconductor packages separated by spaces (e.g, BiocCheck BiocGenerics S4Vectors).")
+    package_input = st.text_input(
+        label="Type in some Bioconductor packages separated by spaces (e.g, BiocCheck BiocGenerics S4Vectors).")
 
+    packages = parse_input(package_input) if package_input else None
 
-packages = parse_input(package_input) if package_input else None
+    # check if "fresh" data exists
+    package_data, data_age = get_dash_data(
+        packages=packages, force=True if packages else False)
+    data_age = round(data_age) if data_age else 0
 
-# check if "fresh" data exists
-package_data, data_age = get_dash_data(packages=packages, force=True if packages else False)
-data_age = round(data_age) if data_age else 0
+    st.write(
+        f"The data below are **{data_age} hour{'s' if data_age > 1 or not data_age else ''} old**.")
 
-st.write(
-    f"The data below are **{data_age} hour{'s' if data_age > 1 or not data_age else ''} old**.")
-
-fig = alt.Chart(package_data).mark_square(  # type: ignore
-    size=500  # type: ignore
-).encode(
-    x="Name",
-    y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
-    color=alt.Color(
-        "Log Level",  # type: ignore
-        sort=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
-        scale=alt.Scale(  # type: ignore
-            domain=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
-            range=["green", "orange", "red", "purple"])  # type: ignore
+    fig = alt.Chart(package_data).mark_square(  # type: ignore
+        size=500  # type: ignore
+    ).encode(
+        x="Name",
+        y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
+        color=alt.Color(
+            "Log Level",  # type: ignore
+            sort=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
+            scale=alt.Scale(  # type: ignore
+                domain=["OK", "WARNINGS", "ERROR",
+                        "NOT FOUND"],  # type: ignore
+                range=["green", "orange", "red", "purple"])  # type: ignore
+        )
+    ).configure_axis(
+        labelFontSize=18
+    ).properties(
+        height=250
     )
-).configure_axis(
-    labelFontSize=18
-).properties(
-    height=250
-)
+
+    # alt.Chart(df).mark_bar().encode(  # type: ignore
+    #     x="Name", y="Message Count",
+    #     color=alt.Color("Log Level:O", scale=alt.Scale(  # type: ignore
+    #         scheme="dark2"))  # type: ignore
+    # )
+    st.altair_chart(fig, use_container_width=True)
+
+    st.write("Click on a row to view the message details.")
+    selection = aggrid_interactive_table(df=package_data.sort_values(["Name"]))
+
+    if selection.selected_rows:
+        _, name, release, log_level, stage, count, * \
+            messages = selection.selected_rows[0].values()
+        if log_level == "OK":
+            st.write(
+                f"### There were no problems in the *{release}* build of **{name}**.")
+        elif log_level == "NOT FOUND":
+            st.write(
+                f"### **{name}** was not found in the list of Bioconductor packages.")
+        else:
+            # change warnings to warning if message count is smaller than 2
+            log_level = "warning" if (
+                int(count) < 2 and "W" in log_level) else log_level.lower()
+            st.write(f"### {name} had {count} {log_level} during {stage}.")
+
+            for i, message in enumerate(messages):
+                if not message:
+                    continue
+                st.write(f"**{log_level.capitalize()} {i+1}**")
+                st.code(message, language="r")
 
 
-# alt.Chart(df).mark_bar().encode(  # type: ignore
-#     x="Name", y="Message Count",
-#     color=alt.Color("Log Level:O", scale=alt.Scale(  # type: ignore
-#         scheme="dark2"))  # type: ignore
-# )
-st.altair_chart(fig, use_container_width=True)
-
-
-st.write("Click on a row to view the message details.")
-selection = aggrid_interactive_table(df=package_data.sort_values(["Name"]))
-
-if selection.selected_rows:
-    _, name, release, log_level, stage, count, * \
-        messages = selection.selected_rows[0].values()
-    if log_level == "OK":
-        st.write(
-            f"### There were no problems in the *{release}* build of **{name}**.")
-    elif log_level == "NOT FOUND":
-        st.write(
-            f"### **{name}** was not found in the list of Bioconductor packages.")
-    else:
-        # change warnings to warning if message count is smaller than 2
-        log_level = "warning" if (int(count) < 2 and "W" in log_level) else log_level.lower()
-        st.write(f"### {name} had {count} {log_level} during {stage}.")
-
-        for i, message in enumerate(messages):
-            if not message:
-                continue
-            st.write(f"**{log_level.capitalize()} {i+1}**")
-            st.code(message, language="r")
-
-# %%
+if __name__ == "__main__":
+    run_dash()
