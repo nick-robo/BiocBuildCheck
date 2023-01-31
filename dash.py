@@ -5,7 +5,7 @@ import time
 from os.path import getmtime, isfile
 from typing import Iterable, Optional
 from warnings import simplefilter
-from st_aggrid import AgGrid, GridOptionsBuilder, AgGridReturn
+from st_aggrid import AgGrid, GridOptionsBuilder, AgGridReturn, ColumnsAutoSizeMode
 from st_aggrid.shared import GridUpdateMode
 
 import streamlit as st
@@ -36,7 +36,7 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     options.configure_selection("single")
     selection = AgGrid(
         status_df,
-        fit_columns_on_grid_load=True,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
         gridOptions=options.build(),
         theme="streamlit",
         update_mode=GridUpdateMode.MODEL_CHANGED,
