@@ -3,6 +3,7 @@ import time
 
 from os.path import getmtime, isfile
 from typing import Iterable, Optional
+from warnings import simplefilter
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 
@@ -12,6 +13,7 @@ import pandas as pd
 
 from check import get_package_status, get_info
 
+simplefilter("ignore", FutureWarning)
 
 def aggrid_interactive_table(df: pd.DataFrame):
     """Creates an st-aggrid interactive table based on a dataframe.
@@ -64,7 +66,7 @@ def get_dash_data(packages: Optional[Iterable[str]] = None, force: bool = False)
 
 def parse_input(user_input: str) -> list[str]:
 
-    input_list = user_input.split(" ")
+    input_list = user_input.strip().split(" ")
 
     filtered_list = filter(lambda x: not (" " in x or not ""), input_list)
     return list(input_list)
