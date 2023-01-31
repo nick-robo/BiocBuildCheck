@@ -9,6 +9,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, AgGridReturn, ColumnsAutoSizeM
 from st_aggrid.shared import GridUpdateMode
 
 import streamlit as st
+import streamlit_analytics
 import altair as alt
 import pandas as pd
 
@@ -169,4 +170,5 @@ def run_dash():
 
 
 if __name__ == "__main__":
-    run_dash()
+    with streamlit_analytics.track():
+        run_dash()

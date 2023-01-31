@@ -12,6 +12,7 @@ matplotlib = "*"
 streamlit = "*"
 altair = "*"
 streamlit-aggrid = "*"
+streamlit-analytics = "*"
 
 [dev-packages]
 ipykernel = "*"
