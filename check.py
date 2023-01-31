@@ -99,6 +99,7 @@ def get_info(status_df: pd.DataFrame) -> None:
             raise Exception("Invalid data in status df.")
 
         if status == "OK" or status == "NOT FOUND":
+            status_df.loc[idx, "stage"] = pd.NA  # type: ignore
             status_df.loc[idx, "message_count"] = 0  # type: ignore
 
             continue
@@ -156,7 +157,7 @@ def get_info(status_df: pd.DataFrame) -> None:
         inplace=True)
 # %%
 
-
-df = get_package_status(devel=True)
-get_info(df)
-pd.to_pickle(df, "saved.pkl")
+if __name__ == "__main__":
+    df = get_package_status(["BiocCheck", "S4Vectors"], devel=True)
+    get_info(df)
+    pd.to_pickle(df, "saved.pkl")
