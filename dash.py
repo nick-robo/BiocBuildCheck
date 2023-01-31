@@ -91,17 +91,17 @@ data_age = round(data_age) if data_age else 0
 st.write(
     f"The data below are **{data_age} hour{'s' if data_age > 1 or not data_age else ''} old**.")
 
-fig = alt.Chart(package_data).mark_square(
-    size=500
+fig = alt.Chart(package_data).mark_square(  # type: ignore
+    size=500  # type: ignore
 ).encode(
     x="Name",
-    y=alt.Y("Release:N", sort=("release", "devel")),
+    y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
     color=alt.Color(
-        "Log Level",
-        sort=["OK", "WARNINGS", "ERROR", "NOT FOUND"],
-        scale=alt.Scale(
-            domain=["OK", "WARNINGS", "ERROR", "NOT FOUND"],
-            range=["green", "orange", "red", "purple"])
+        "Log Level",  # type: ignore
+        sort=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
+        scale=alt.Scale(  # type: ignore
+            domain=["OK", "WARNINGS", "ERROR", "NOT FOUND"],  # type: ignore
+            range=["green", "orange", "red", "purple"])  # type: ignore
     )
 ).configure_axis(
     labelFontSize=18
