@@ -47,7 +47,7 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     return selection
 
 
-@st.cache
+@st.cache(ttl=3600)
 def get_dash_data(
     packages: Optional[Iterable[str]] = None, force: bool = False
 ) -> tuple[pd.DataFrame, float]:
