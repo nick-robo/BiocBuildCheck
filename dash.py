@@ -165,7 +165,7 @@ def run_dash():
             for i, message in enumerate(messages):
                 if not message:
                     continue
-                st.write(f"**{log_level.capitalize()} {i+1}**")
+                st.write(f"**{log_level.capitalize().strip('s')} {i+1}**")
                 st.code(message, language="r")
 
 
