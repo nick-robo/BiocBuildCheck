@@ -97,9 +97,8 @@ def parse_input(user_input: str) -> list[str]:
 def run_dash():
     """Generates the dashboard.
     """
-
+    st.title("Package Status Dashboard")
     st.write("""
-    # Package Status Dashboard
     ## A little dashboard for monitoring your Bioconductor packages of interest.
     """)
 
