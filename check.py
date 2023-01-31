@@ -1,3 +1,5 @@
+"""Functions for scraping and parsing Bioconductor build reports.
+"""
 # %%
 
 from typing import Optional, Iterable
@@ -8,9 +10,28 @@ import bs4
 import requests
 import pandas as pd
 
+stage_dict = {
+    'install': 'install',
+    'buildsrc': "build",
+    'checksrc': "check",
+    'buildbin': 'bin'
+}
 
-def build_urls(package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = "") -> list[str]:
 
+def build_urls(
+    package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = ""
+) -> list[str]:
+    """Build the URLs to request.
+
+    Args:
+        package (Optional[str], optional): Package of interest. Defaults to None.
+        release (bool, optional): Whether to build release URLs. Defaults to True.
+        devel (bool, optional): Whether to build devel URLs. Defaults to False.
+        path (str, optional): A URL path to append to the URLs (e.g. "index.html"). Defaults to "".
+
+    Returns:
+        list[str]: _description_
+    """
     base = "https://bioconductor.org/checkResults"
     subfolder = "bioc-LATEST"
 
@@ -25,7 +46,15 @@ def build_urls(package: Optional[str] = None, release: bool = True, devel: bool 
 
 
 def parse_log(log: str, status: str) -> list[str]:
+    """Parse build and check logs for relelvant messages.
 
+    Args:
+        log (str): The build/check log.
+        status (str): The log level (i.e. "ERROR", "WARNINGS").
+
+    Returns:
+        list[str]: A list of relevant messages from the log.
+    """
     status = status if status != "WARNINGS" else "WARNING"
 
     log_array = list(filter(lambda x: not "DONE" in x,
@@ -34,8 +63,23 @@ def parse_log(log: str, status: str) -> list[str]:
     return log_array
 
 
-def get_pages_data(package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = "") -> list[bs4.BeautifulSoup]:
+def get_pages_data(
+    package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = ""
+) -> list[bs4.BeautifulSoup]:
+    """Gets the (HTML) page data of interest.
 
+    Args:
+        package (Optional[str], optional): A package of interest. Defaults to None.
+        release (bool, optional): Whether to build release URLs. Defaults to True.
+        devel (bool, optional): Whether to build devel URLs. Defaults to False.
+        path (str, optional): A URL path to append to the URLs (e.g. "index.html"). Defaults to "".
+
+    Raises:
+        Exception: Failure to fetch the URL.
+
+    Returns:
+        list[bs4.BeautifulSoup]: _description_
+    """
     urls = build_urls(package=package, release=release, devel=devel, path=path)
 
     pages_data = []
@@ -49,14 +93,25 @@ def get_pages_data(package: Optional[str] = None, release: bool = True, devel: b
     return pages_data
 
 
-def get_package_status(packages: Optional[Iterable[str]] = None, devel: bool = False) -> pd.DataFrame:
+def get_package_status(
+    packages: Optional[Iterable[str]] = None, devel: bool = False
+) -> pd.DataFrame:
+    """Gets the status of each package and forms a data frame.
+
+    Args:
+        packages (Optional[Iterable[str]], optional): A list of packages of interest.
+            Defaults to None.
+        devel (bool, optional): Whether to get devel status. Defaults to False.
+
+    Returns:
+        pd.DataFrame: A data frame containing the status of the packages.
+    """
 
     pages_data = get_pages_data(devel=devel)
 
     # if `packages` is None read packages file
-    # TODO: make this more flexible
     if not packages:
-        with open("packages", "r") as file:
+        with open("packages", "r", encoding="utf-8") as file:
             packages = file.read().splitlines()
 
     status = {name: [] for name in packages}
@@ -64,7 +119,7 @@ def get_package_status(packages: Optional[Iterable[str]] = None, devel: bool = F
     for data in pages_data:
         for name in packages:
             links = data.find_all("a")
-            package_row = list(filter(lambda x: x.text == name, links))
+            package_row = list(filter(lambda x: x.text == name, links))  # pylint: disable=cell-var-from-loop
 
             if package_row:
                 status[name].append(package_row[0].find_parent(
@@ -85,20 +140,18 @@ def get_package_status(packages: Optional[Iterable[str]] = None, devel: bool = F
 
 
 def get_info(status_df: pd.DataFrame) -> None:
+    """Populates the status data frame with detailed information.
 
-    stage_dict = {
-        'install': 'install',
-        'buildsrc': "build",
-        'checksrc': "check",
-        'buildbin': 'bin'
-    }
+    Args:
+        status_df (pd.DataFrame): A data frame constructed by `get_package_status`.
+    """
 
     for idx, (name, release, status, *_) in status_df.iterrows():
         # check input data are correct data type
         if not (isinstance(name, str) and isinstance(release, str) and isinstance(status, str)):
-            raise Exception("Invalid data in status df.")
+            raise ValueError("Invalid data in status df.")
 
-        if status == "OK" or status == "NOT FOUND":
+        if status in ('OK', 'NOT FOUND'):
             status_df.loc[idx, "stage"] = pd.NA  # type: ignore
             status_df.loc[idx, "message_count"] = 0  # type: ignore
 
@@ -139,23 +192,21 @@ def get_info(status_df: pd.DataFrame) -> None:
         if not log:
             raise Exception("Could not find error/worning log.")
 
-        log_messages = parse_log(log, status)
-
-        message_count = len(log_messages)
+        log = parse_log(log, status)
 
         status_df.loc[idx, "stage"] = stage  # type: ignore
-        status_df.loc[idx, "message_count"] = message_count  # type: ignore
-        for i, message in enumerate(log_messages):
+        status_df.loc[idx, "message_count"] = len(log)  # type: ignore
+        for i, message in enumerate(log):
             status_df.loc[idx, f"Message {i+1}"] = message  # type: ignore
 
     status_df.fillna(pd.NA, inplace=True)
 
     pretty_names = ["Name", "Release", "Log Level", "Stage", "Message Count"]
     status_df.rename(
-        columns={key: value for key, value in zip(
-            status_df.columns[:6], pretty_names)},
+        columns=dict(zip(status_df.columns[:6], pretty_names)),
         inplace=True)
 # %%
+
 
 if __name__ == "__main__":
     df = get_package_status(["BiocCheck", "S4Vectors"], devel=True)

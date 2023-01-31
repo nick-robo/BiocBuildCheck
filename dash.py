@@ -1,10 +1,11 @@
-
+"""Runs a dashboard to visualise the build status of Bioconductor packages
+"""
 import time
 
 from os.path import getmtime, isfile
 from typing import Iterable, Optional
 from warnings import simplefilter
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, AgGridReturn
 from st_aggrid.shared import GridUpdateMode
 
 import streamlit as st
@@ -17,7 +18,7 @@ from check import get_package_status, get_info
 simplefilter("ignore", FutureWarning)
 
 
-def aggrid_interactive_table(df: pd.DataFrame):
+def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     """Creates an st-aggrid interactive table based on a dataframe.
 
     Args:
@@ -27,14 +28,14 @@ def aggrid_interactive_table(df: pd.DataFrame):
         dict: The selected row
     """
     options = GridOptionsBuilder.from_dataframe(
-        df, enableRowGroup=True, enableValue=True, enablePivot=True
+        status_df, enableRowGroup=True, enableValue=True, enablePivot=True
     )
 
     options.configure_side_bar()
 
     options.configure_selection("single")
     selection = AgGrid(
-        df,
+        status_df,
         fit_columns_on_grid_load=True,
         gridOptions=options.build(),
         theme="streamlit",
@@ -46,28 +47,47 @@ def aggrid_interactive_table(df: pd.DataFrame):
 
 
 @st.cache
-def get_dash_data(packages: Optional[Iterable[str]] = None, force: bool = False) -> tuple[pd.DataFrame, float]:
+def get_dash_data(
+    packages: Optional[Iterable[str]] = None, force: bool = False
+) -> tuple[pd.DataFrame, float]:
+    """Gets the data necessary to populate the dashboard.
+
+    Args:
+        packages (Optional[Iterable[str]], optional): List of packages of interest. Default is None.
+        force (bool, optional): Whether to force recompute the data. Defaults to False.
+
+    Returns:
+        tuple[pd.DataFrame, float]: The dashboard data.
+    """
 
     data_age = 0.0
 
     if force:
-        df = get_package_status(packages=packages, devel=True)
-        get_info(df)
+        status_df = get_package_status(packages=packages, devel=True)
+        get_info(status_df)
     elif isfile("saved.pkl") and (data_age := (time.time() - getmtime("saved.pkl"))/3600) > 8:
-        df = get_package_status(packages=packages, devel=True)
-        get_info(df)
-        pd.to_pickle(df, "saved.pkl")
+        status_df = get_package_status(packages=packages, devel=True)
+        get_info(status_df)
+        pd.to_pickle(status_df, "saved.pkl")
     else:
-        df = pd.read_pickle("saved.pkl")
+        status_df = pd.read_pickle("saved.pkl")
 
-    df = get_package_status(packages=packages, devel=True)
-    get_info(df)
-    pd.to_pickle(df, "saved.pkl")
+    status_df = get_package_status(packages=packages, devel=True)
+    get_info(status_df)
+    pd.to_pickle(status_df, "saved.pkl")
 
-    return df, data_age
+    return status_df, data_age
 
 
 def parse_input(user_input: str) -> list[str]:
+    """Parses the user input.
+
+    Args:
+        user_input (str): The user input.
+
+    Returns:
+        list[str]: Parsed input.
+    """
 
     input_list = user_input.strip().split(" ")
 
@@ -75,19 +95,23 @@ def parse_input(user_input: str) -> list[str]:
 
 
 def run_dash():
+    """Generates the dashboard.
+    """
+
     st.write("""
     # Package Status Dashboard
     ## A little dashboard for monitoring your Bioconductor packages of interest.
     """)
 
     package_input = st.text_input(
-        label="Type in some Bioconductor packages separated by spaces (e.g, BiocCheck BiocGenerics S4Vectors).")
+        label="Type in some Bioconductor packages separated by \
+               spaces (e.g, BiocCheck BiocGenerics S4Vectors).")
 
     packages = parse_input(package_input) if package_input else None
 
     # check if "fresh" data exists
     package_data, data_age = get_dash_data(
-        packages=packages, force=True if packages else False)
+        packages=packages, force=bool(packages))
     data_age = round(data_age) if data_age else 0
 
     st.write(
@@ -120,7 +144,8 @@ def run_dash():
     st.altair_chart(fig, use_container_width=True)
 
     st.write("Click on a row to view the message details.")
-    selection = aggrid_interactive_table(df=package_data.sort_values(["Name"]))
+    selection = aggrid_interactive_table(
+        status_df=package_data.sort_values(["Name"]))
 
     if selection.selected_rows:
         _, name, release, log_level, stage, count, * \
