@@ -13,6 +13,7 @@ import pandas as pd
 
 from check import get_package_status, get_info
 
+# ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
 
 def aggrid_interactive_table(df: pd.DataFrame):
