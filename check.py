@@ -123,8 +123,8 @@ def get_package_status(
             # get all hyperlinks
             links = data.find_all("a")
             # get the hyperlink who's text is the same as the package name
-            package_row = list(filter(lambda x: x.text == name, links)
-                               )  # pylint: disable=cell-var-from-loop
+            package_row = list(
+                filter(lambda x: x.text == name, links))  # pylint: disable=cell-var-from-loop
 
             if package_row:
                 # get the name of the last class of the link's row (gcard)
