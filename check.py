@@ -3,6 +3,7 @@
 # %%
 
 from typing import Optional, Iterable
+from datetime import datetime
 
 import re
 
@@ -122,7 +123,8 @@ def get_package_status(
             # get all hyperlinks
             links = data.find_all("a")
             # get the hyperlink who's text is the same as the package name
-            package_row = list(filter(lambda x: x.text == name, links)) # pylint: disable=cell-var-from-loop
+            package_row = list(filter(lambda x: x.text == name, links)
+                               )  # pylint: disable=cell-var-from-loop
 
             if package_row:
                 # get the name of the last class of the link's row (gcard)
@@ -213,11 +215,36 @@ def get_info(status_df: pd.DataFrame) -> None:
     status_df.rename(
         columns=dict(zip(status_df.columns[:6], pretty_names)),
         inplace=True)
+
+
+def get_download_stats(status_df: pd.DataFrame) -> pd.DataFrame:
+
+    def data_url(name: str) -> str:
+        return "https://bioconductor.org/packages/stats/bioc/" + name + "/" + name + "_stats.tab"
+
+    dfs = []
+    for name in status_df.iloc[:, 0].unique():
+        now = datetime.now()  # pylint: disable=unused-variable
+        dfs.append(
+            pd.read_csv(data_url(name), delimiter="\t")
+            .query("Month != 'all'")  # remove month totals
+            .drop("Nb_of_distinct_IPs", axis=1)  # drop distinct IPs
+            .assign(Name=name)  # create column with package name
+            # reorder columns and create `datetime` "Date" columns
+            .pipe(lambda df: pd.DataFrame({
+                "Name": df.Name,
+                "Date": pd.to_datetime(df.Year.astype('str') + "-" + df.Month),
+                "Downloads": df.Nb_of_downloads}))
+            .query("Date < @now")  # remove dates in the future
+        )
+
+    return pd.concat(dfs)
+
 # %%
 
 
 if __name__ == "__main__":
-    df = get_package_status(["ClassifyR", "ANCOMBC"], devel=True)
+    df = get_package_status(devel=True)
     get_info(df)
     # pd.to_pickle(df, "saved.pkl")
 
