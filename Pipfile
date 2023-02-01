@@ -13,6 +13,7 @@ streamlit = "*"
 altair = "*"
 streamlit-aggrid = "*"
 streamlit-analytics = "*"
+html5lib = "*"
 
 [dev-packages]
 ipykernel = "*"
