@@ -5,6 +5,7 @@ import time
 from os.path import getmtime, isfile
 from typing import Iterable, Optional
 from warnings import simplefilter
+from datetime import date
 from st_aggrid import AgGrid, GridOptionsBuilder, AgGridReturn, ColumnsAutoSizeMode
 from st_aggrid.shared import GridUpdateMode
 
@@ -12,8 +13,9 @@ import streamlit as st
 import streamlit_analytics
 import altair as alt
 import pandas as pd
+import numpy as np
 
-from check import get_package_status, get_info
+from check import get_package_status, get_info, get_download_stats
 
 # ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
@@ -98,6 +100,7 @@ def parse_input(user_input: str) -> list[str]:
 def run_dash():
     """Generates the dashboard.
     """
+
     st.title("Package Status Dashboard")
     st.write("""
     ## A little dashboard for monitoring your Bioconductor packages of interest.
@@ -111,63 +114,111 @@ def run_dash():
 
     # check if "fresh" data exists
     package_data, data_age = get_dash_data(
-        packages=packages, force=bool(packages))
+        packages=packages, force=True)
     data_age = round(data_age) if data_age else 0
 
-    st.write(
-        f"The data below are **{data_age} hour{'s' if data_age > 1 or not data_age else ''} old**.")
+    dl_data = get_download_stats(package_data)
 
-    fig = alt.Chart(package_data).mark_square(  # type: ignore
-        size=500  # type: ignore
-    ).encode(
-        x="Name",
-        y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
-        color=alt.Color(
-            "Log Level",  # type: ignore
-            sort=["OK", "WARNINGS", "ERROR",
-                  "NOT FOUND", "TIMEOUT"],  # type: ignore
-            scale=alt.Scale(  # type: ignore
-                domain=["OK", "WARNINGS", "ERROR",
-                        "NOT FOUND", "TIMEOUT"],  # type: ignore
-                range=["green", "orange", "red", "purple", "blue"])  # type: ignore
+    status_tab, download_tab = st.tabs(["Build Status", "Downloads"])
+
+    with status_tab:
+        st.write(
+            f"The data below are **{data_age} hour{'s' if data_age > 1 or not data_age else ''} old**.")
+
+        fig = alt.Chart(package_data).mark_square(  # type: ignore
+            size=500  # type: ignore
+        ).encode(
+            x="Name",
+            y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
+            color=alt.Color(
+                "Log Level",  # type: ignore
+                sort=["OK", "WARNINGS", "ERROR",
+                      "NOT FOUND", "TIMEOUT"],  # type: ignore
+                scale=alt.Scale(  # type: ignore
+                    domain=["OK", "WARNINGS", "ERROR",
+                            "NOT FOUND", "TIMEOUT"],  # type: ignore
+                    range=["green", "orange", "red", "purple", "blue"])  # type: ignore
+            )
+        ).configure_axis(
+            labelFontSize=18
+        ).properties(
+            height=250
         )
-    ).configure_axis(
-        labelFontSize=18
-    ).properties(
-        height=250
-    )
 
-    # alt.Chart(df).mark_bar().encode(  # type: ignore
-    #     x="Name", y="Message Count",
-    #     color=alt.Color("Log Level:O", scale=alt.Scale(  # type: ignore
-    #         scheme="dark2"))  # type: ignore
-    # )
-    st.altair_chart(fig, use_container_width=True)
+        st.altair_chart(fig, use_container_width=True)
 
-    st.write("Click on a row to view the message details.")
-    selection = aggrid_interactive_table(
-        status_df=package_data.sort_values(["Name"]))
+        st.write("Click on a row to view the message details.")
+        selection = aggrid_interactive_table(
+            status_df=package_data.sort_values(["Name"]))
 
-    if selection.selected_rows:
-        _, name, release, log_level, stage, count, * \
-            messages = selection.selected_rows[0].values()
-        if log_level == "OK":
-            st.write(
-                f"### There were no problems in the *{release}* build of **{name}**.")
-        elif log_level == "NOT FOUND":
-            st.write(
-                f"### **{name}** was not found in the list of Bioconductor packages.")
-        else:
-            # change warnings to warning if message count is smaller than 2
-            log_level = "warning" if (
-                int(count) < 2 and "W" in log_level) else log_level.lower()
-            st.write(f"### {name} had {count} {log_level} during {stage}.")
+        if selection.selected_rows:
+            _, name, release, log_level, stage, count, * \
+                messages = selection.selected_rows[0].values()
+            if log_level == "OK":
+                st.write(
+                    f"### There were no problems in the *{release}* build of **{name}**.")
+            elif log_level == "NOT FOUND":
+                st.write(
+                    f"### **{name}** was not found in the list of Bioconductor packages.")
+            else:
+                # change warnings to warning if message count is smaller than 2
+                log_level = "warning" if (
+                    int(count) < 2 and "W" in log_level) else log_level.lower()
+                st.write(f"### {name} had {count} {log_level} during {stage}.")
 
-            for i, message in enumerate(messages):
-                if not message:
-                    continue
-                st.write(f"**{log_level.capitalize().strip('s')} {i+1}**")
-                st.code(message, language="r")
+                for i, message in enumerate(messages):
+                    if not message:
+                        continue
+                    st.write(f"**{log_level.capitalize().strip('s')} {i+1}**")
+                    st.code(message, language="r")
+
+    with download_tab:
+        st.write("### Filters")
+
+        include = st.multiselect(
+            label="Choose which packages to include.",
+            options=dl_data.Name.unique(),  # type: ignore
+            default=dl_data.Name.unique()  # type: ignore
+        )
+        dates = st.slider(
+            label="Select a date range of interest.",
+            min_value=(min_v := min(dl_data.Date).date()),
+            max_value=(max_v := max(dl_data.Date).date()),
+            value=(min_v, max_v),
+            format="MMM YYYY",
+        )
+        log = st.checkbox("Log scale")
+
+        min_date, max_date = [date(x.year, x.month, 1) for x in dates]
+
+        # dummy index of True
+        true_index = np.ones_like(dl_data.Downloads) == 1
+
+        pack_index = dl_data.Name.isin(  # type: ignore
+            include) if include else true_index
+        date_index = (dl_data.Date.dt.date >= min_date) & (
+            dl_data.Date.dt.date <= max_date)
+
+        index = pack_index * date_index
+
+        fig = (
+            alt.Chart(
+                dl_data[index]
+            )
+            .mark_line()
+            .encode(
+                x="yearmonth(Date)",
+                y=alt.Y("Downloads", scale=alt.Scale(  # type: ignore
+                    type="symlog" if log else "linear")),  # type: ignore
+                color="Name"
+            )
+        ).properties(
+            height=400
+        )
+
+        st.write("### Plot")
+
+        st.altair_chart(fig, use_container_width=True)
 
 
 if __name__ == "__main__":

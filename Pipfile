@@ -8,12 +8,12 @@ beautifulsoup4 = "*"
 requests = "*"
 pandas = "*"
 lxml = "*"
-matplotlib = "*"
 streamlit = "*"
 altair = "*"
 streamlit-aggrid = "*"
 streamlit-analytics = "*"
 html5lib = "*"
+numpy = "*"
 
 [dev-packages]
 ipykernel = "*"
