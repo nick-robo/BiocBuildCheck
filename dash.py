@@ -111,7 +111,7 @@ def run_dash():
     package_data = get_build_data(packages=packages)
     dl_data = get_dl_data(package_data)
 
-    status_tab, download_tab = st.tabs(["Build Status", "Downloads"])
+    status_tab, download_tab = st.tabs(["Bioc Build Status", "Downloads"])
 
     with status_tab:
 
