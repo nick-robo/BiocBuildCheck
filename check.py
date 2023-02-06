@@ -5,10 +5,13 @@
 import re
 from datetime import datetime
 from typing import Iterable, Optional
+from urllib.parse import urlparse
 
 import bs4
 import pandas as pd
 import requests
+from github import Github
+from github.Issue import Issue
 
 stage_dict = {
     'install': 'install',
@@ -242,12 +245,51 @@ def get_download_stats(status_df: pd.DataFrame) -> pd.DataFrame:
 
     return pd.concat(dfs)
 
+
+def get_descrption_data(name: str) -> dict[str, str]:
+
+    base = "https://bioconductor.org/packages/release/bioc/html/"
+
+    data = pd.read_html(base + name + ".html",
+                        attrs={"class": "details"})[0].fillna("")
+    data.columns = ["key", "value"]
+
+    return data.set_index("key").to_dict()["value"]
+
+
+def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
+
+    result = dict()
+    g = Github()
+
+    for name in status_df.iloc[:, 0].unique():
+        data = get_descrption_data(name)
+
+        if not ("BugReports" in data.keys()) or not data["BugReports"]:
+            result[name] = None
+            continue
+
+        url = urlparse(data["BugReports"])
+
+        # 1. split the path: "/Org/Repo/issues" -> ["", "Org", "Repo", "Issues"]
+        # 2. filter: ["", "Org", "Repo", "Issues"] -> ["Org", "Repo"]
+        # 3. join to string: ["Org", "Repo"] -> "Org/Repo"
+        repo_name = "/".join(x for x in url.path.split("/")
+                             if x and x != "issues")
+
+        result[name] = list(g.get_repo(repo_name).get_issues(state="open"))
+
+    return result
 # %%
 
 
 if __name__ == "__main__":
     df = get_package_status(devel=True)
-    get_info(df)
+    # get_info(df)
     # pd.to_pickle(df, "saved.pkl")
+    issues = get_issues(df)
+
+    print(issues)
+
 
 # %%
