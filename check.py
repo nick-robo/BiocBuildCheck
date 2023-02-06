@@ -2,14 +2,13 @@
 """
 # %%
 
-from typing import Optional, Iterable
-from datetime import datetime
-
 import re
+from datetime import datetime
+from typing import Iterable, Optional
 
 import bs4
-import requests
 import pandas as pd
+import requests
 
 stage_dict = {
     'install': 'install',
@@ -20,7 +19,10 @@ stage_dict = {
 
 
 def build_urls(
-    package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = ""
+    package: Optional[str] = None,
+    release: bool = True,
+    devel: bool = False,
+    path: str = ""
 ) -> list[str]:
     """Build the URLs to request.
 
