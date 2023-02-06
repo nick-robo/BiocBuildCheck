@@ -3,6 +3,7 @@
 # %%
 
 import re
+import os
 from datetime import datetime
 from typing import Iterable, Optional
 from urllib.parse import urlparse
@@ -259,8 +260,12 @@ def get_descrption_data(name: str) -> dict[str, str]:
 
 def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
 
+    if not (pat := os.environ.get("GITHUB_PAT")):
+        with open("pat", encoding="UTF8") as f:
+            pat = f.read().splitlines()[0]
+
     result = dict()
-    g = Github()
+    g = Github(pat)
 
     for name in status_df.iloc[:, 0].unique():
         data = get_descrption_data(name)
