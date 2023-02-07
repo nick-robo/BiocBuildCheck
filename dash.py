@@ -162,7 +162,7 @@ def run_dash():
 
         st.altair_chart(status_fig, use_container_width=True)
 
-        st.write("Click on a row to view the message details.")
+        st.write("Click on a row to view the message details. If it is missing, press `r`.")
         selection = aggrid_interactive_table(
             status_df=package_data.sort_values(["Name"]))
 
@@ -264,7 +264,7 @@ def run_dash():
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
                            template="plotly_dark")
 
-        st.write("**Click** on the plot below to see issues of intest.")
+        st.write("**Click** on the plot below to see issues of intest. If it is missing, press `r`.")
         selected = plotly_events(issue_fig)
 
         if selected:
