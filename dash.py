@@ -97,7 +97,7 @@ def parse_input(user_input: str) -> list[str]:
     return [x for x in input_list if x]
 
 
-@st.cache(ttl=10*3600)
+@st.cache(ttl=10*3600, allow_output_mutation=True)
 def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Optional[tuple[Issue]]]:
     """Gets the issue data necessary for the dashboard.
 
