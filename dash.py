@@ -238,7 +238,7 @@ def run_dash():
         st.altair_chart(dl_fig, use_container_width=True)
 
     with gh_tab:
-        issue_data = get_issue_data(package_data, dev=True)
+        issue_data = get_issue_data(package_data, dev=False)
         st.write("### GitHub Issues")
 
         not_found = [key for key, value in issue_data.items() if value is None]
