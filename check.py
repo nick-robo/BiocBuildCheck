@@ -261,11 +261,11 @@ def get_descrption_data(name: str) -> dict[str, str]:
 def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
 
     if not (pat := os.environ.get("GITHUB_PAT")):
-        with open("pat", encoding="UTF8") as f:
-            pat = f.read().splitlines()[0]
+        with open("pat", encoding="UTF8") as file:
+            pat = file.read().splitlines()[0]
 
-    result = dict()
-    g = Github(pat)
+    result = {}
+    github = Github(pat)
 
     for name in status_df.iloc[:, 0].unique():
         data = get_descrption_data(name)
@@ -282,7 +282,7 @@ def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
         repo_name = "/".join(x for x in url.path.split("/")
                              if x and x != "issues")
 
-        result[name] = list(g.get_repo(repo_name).get_issues(state="open"))
+        result[name] = list(github.get_repo(repo_name).get_issues(state="open"))
 
     return result
 # %%

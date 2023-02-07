@@ -247,7 +247,7 @@ def run_dash():
             # st.write(not_found)
             st.write(
                 "Could not find a repo link for: ",
-                " and ".join(not_found) if len(not_found) == 2 else ", ".join(
+                " and ".join("*" + x + "*" for x in not_found) if len(not_found) == 2 else ", ".join(
                     not_found), ". ", "Consider pushing a bug report URL to Bioconductor."
             )
 
@@ -263,6 +263,8 @@ def run_dash():
 
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
                            template="plotly_dark")
+
+        st.write("**Click** on the plot below to see issues of intest.")
         selected = plotly_events(issue_fig)
 
         if selected:
@@ -280,7 +282,7 @@ def run_dash():
                         f"**Issue {i+1}**: [{issue.title}]({issue.html_url}) (#{issue.number})")
 
                     with st.expander("Show issue"):
-                        st.markdown(issue.body)
+                        st.markdown(issue.body.strip("\r"))
 
             else:
                 st.write(f"{selected_name} has no issues!")
