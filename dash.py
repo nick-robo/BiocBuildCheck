@@ -98,7 +98,7 @@ def parse_input(user_input: str) -> list[str]:
 
 
 @st.cache(ttl=10*3600)
-def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Optional[list[Issue]]]:
+def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Optional[tuple[Issue]]]:
     """Gets the issue data necessary for the dashboard.
 
     Args:
@@ -108,8 +108,8 @@ def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Opti
         pd.DataFrame: DF of download stats.
     """
     if dev:
-        with open("issues.pkl", "rb") as f:
-            issues = load(f)
+        with open("issues.pkl", "rb") as file:
+            issues = load(file)
     else:
         issues = get_issues(status_df)
 
@@ -162,7 +162,8 @@ def run_dash():
 
         st.altair_chart(status_fig, use_container_width=True)
 
-        st.write("Click on a row to view the message details. If it is missing, press `r`.")
+        st.write(
+            "Click on a row to view the message details. If it is missing, press `r`.")
         selection = aggrid_interactive_table(
             status_df=package_data.sort_values(["Name"]))
 
@@ -245,14 +246,18 @@ def run_dash():
 
         if not_found:
             # st.write(not_found)
+            missing_str = (
+                " and ".join("*" + x + "*" for x in not_found) if len(not_found) == 2
+                else ", ".join(not_found)
+            )
             st.write(
                 "Could not find a repo link for: ",
-                " and ".join("*" + x + "*" for x in not_found) if len(not_found) == 2 else ", ".join(
-                    not_found), ". ", "Consider pushing a bug report URL to Bioconductor."
+                missing_str,
+                ". ", "Consider pushing a bug report URL to Bioconductor."
             )
 
         issue_plot_data = {k: len(v)
-                           for k, v in issue_data.items() if v != None}
+                           for k, v in issue_data.items() if v is not None}
 
         issue_plot_data = pd.DataFrame(
             {
@@ -264,7 +269,8 @@ def run_dash():
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
                            template="plotly_dark")
 
-        st.write("**Click** on the plot below to see issues of intest. If it is missing, press `r`.")
+        st.write(
+            "**Click** on the plot below to see issues of intest. If it is missing, press `r`.")
         selected = plotly_events(issue_fig)
 
         if selected:

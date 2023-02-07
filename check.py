@@ -258,7 +258,7 @@ def get_descrption_data(name: str) -> dict[str, str]:
     return data.set_index("key").to_dict()["value"]
 
 
-def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
+def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[tuple[Issue]]]:
 
     if not (pat := os.environ.get("GITHUB_PAT")):
         with open("pat", encoding="UTF8") as file:
@@ -282,7 +282,7 @@ def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[list[Issue]]]:
         repo_name = "/".join(x for x in url.path.split("/")
                              if x and x != "issues")
 
-        result[name] = list(github.get_repo(repo_name).get_issues(state="open"))
+        result[name] = tuple(github.get_repo(repo_name).get_issues(state="open"))
 
     return result
 # %%
