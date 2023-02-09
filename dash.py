@@ -238,7 +238,7 @@ def run_dash():
 
         st.altair_chart(dl_fig, use_container_width=True)
 
-        st.download_button("Get data ", dl_data.to_csv())
+        st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
 
     with gh_tab:
         issue_data = get_issue_data(package_data, dev=False)
