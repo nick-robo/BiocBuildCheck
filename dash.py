@@ -238,6 +238,8 @@ def run_dash():
 
         st.altair_chart(dl_fig, use_container_width=True)
 
+        st.download_button("Get data ", dl_data.to_csv())
+
     with gh_tab:
         issue_data = get_issue_data(package_data, dev=False)
         st.write("### GitHub Issues")
