@@ -23,10 +23,11 @@ stage_dict = {
 
 
 def build_urls(
-    package: Optional[str] = None,
+    package: str = "",
     release: bool = True,
     devel: bool = False,
-    path: str = ""
+    path: str = "",
+    long: bool = False
 ) -> list[str]:
     """Build the URLs to request.
 
@@ -41,15 +42,19 @@ def build_urls(
     """
     base = "https://bioconductor.org/checkResults"
     subfolder = "bioc-LATEST"
+    long_report = "https://bioconductor.org/checkResults/{}/bioc-LATEST/long-report.html"
 
     filter_list = [release, devel]
     releases = ["release", "devel"]
     releases = [x for x, y in zip(releases, filter_list) if y]
 
-    if not package:
+    if long:
+        return [long_report.format(r) for r in releases]
+
+    if not package and not path:
         return ["/".join([base, release, subfolder]) + "/" for release in releases]
 
-    return ["/".join([base, *releases, subfolder, package]) + '/' + path]
+    return ["/".join([base, *releases, subfolder, package]) + '/' + path.strip(".")]
 
 
 def parse_log(log: str, status: str) -> list[str]:
@@ -71,7 +76,11 @@ def parse_log(log: str, status: str) -> list[str]:
 
 
 def get_pages_data(
-    package: Optional[str] = None, release: bool = True, devel: bool = False, path: str = ""
+    package: str = "",
+    release: bool = True,
+    devel: bool = False,
+    path: str = "",
+    long: bool = False
 ) -> list[bs4.BeautifulSoup]:
     """Gets the (HTML) page data of interest.
 
@@ -87,7 +96,9 @@ def get_pages_data(
     Returns:
         list[bs4.BeautifulSoup]: _description_
     """
-    urls = build_urls(package=package, release=release, devel=devel, path=path)
+
+    urls = build_urls(package=package, release=release,
+                      devel=devel, path=path, long=long)
 
     pages_data = []
 
@@ -153,6 +164,105 @@ def get_package_status(
     return status_df
 
 
+def get_log_messages(log_link: str, name: str, is_release: bool, status: str) -> list[str]:
+
+    data = get_pages_data(release=is_release,
+                          devel=not is_release, path=log_link)[0]
+
+    log = pre.text.replace('â', "'") if (pre := data.find("pre")) else None
+
+    if not log:
+        raise Exception("Could not find error/warning log.")
+
+    return parse_log(log, status)
+
+
+def get_package_status_v2(
+        packages: Optional[Iterable[str]] = None,
+        devel: bool = False,
+        pages_data: Optional[Iterable[bs4.BeautifulSoup]] = None
+) -> pd.DataFrame:
+
+    if not pages_data:
+        pages_data = get_pages_data(devel=devel, long=True)
+
+    if not packages:
+        with open("packages", "r", encoding="utf-8") as file:
+            packages = file.read().splitlines()
+
+    status_dict = {}
+    col_names = ["Name", "Release", "Version", "Maintainer",
+                 "Log Level", "Stage", "Message Count"]
+
+    releases = ["release", "devel"] if devel else ['release']
+
+    i = None
+    max_message_count = 0
+
+    # iterate through the retrieved release logs
+    for release, soup in zip(releases, pages_data):
+        # find each package link
+        package_dict = {
+            l.text: l for l in soup.find_all("a")
+            if l and (href := l.get("href"))
+            and "." in href
+            and l.text in packages
+        }
+        is_release = release == "release"
+
+        # for each requested package
+        for name in packages:
+            i = 0 if i is None else i + 1
+
+            if not name in package_dict.keys():
+                status_dict[i] = (name, release, pd.NA, pd.NA, "NOT FOUND", pd.NA)
+                continue
+
+            # get the card class, a container for all details about the build
+            link = package_dict[name]
+            card = link.find_parent(class_="gcard")
+
+            # get package information
+            version = link.parent.text.split("\xa0")[-1]
+            maintainer = link.parent.find_next_sibling("br").next
+
+            # get the classes of card less "gcard".
+            # the will be in ("ok", "warning", "error", "timeout")
+            status_list = card.get("class")[1:]
+
+            # for each package status
+            for status in status_list:
+                if status == "ok":
+                    status_dict[i] = (name, release, version, maintainer, "OK")
+                    break
+
+                log_link = card.find(class_=status.upper()).parent.get("href")
+
+                if not log_link:
+                    status_dict[i] = (name, release, version, maintainer, "pre-build",
+                                      1, card.find(class_=status.upper()).parent.text)
+                    max_message_count = max(1, max_message_count)
+
+                stage = stage_dict[re.split(r"-|\.", log_link)[-2]]
+                status = status.upper()
+                # get log information
+                messages = get_log_messages(log_link, name, is_release, status)
+                message_count = len(messages)
+                max_message_count = max(message_count, max_message_count)
+
+                status_dict[i] = (
+                    name, release, version, maintainer, status, stage, message_count, *messages
+                )
+
+    col_names.extend(["Message " + str(j + 1)
+                     for j in range(max_message_count)])
+
+    data = pd.DataFrame.from_dict(
+        status_dict, orient="index", columns=col_names)
+
+    return data
+
+
 def get_info(status_df: pd.DataFrame) -> None:
     """Populates the status data frame with detailed information.
 
@@ -183,13 +293,13 @@ def get_info(status_df: pd.DataFrame) -> None:
                 f"Could not find error path.\t\nName: {name}\t\nRelease: {release}")
 
         # check if the `error`'s parent is None. if it is not get the href
-        error_path = error.parent.get("href") if error.parent else None
+        log_link = error.parent.get("href") if error.parent else None
 
         # check if the `error_path` is a str
-        error_path = error_path if isinstance(error_path, str) else None
+        log_link = log_link if isinstance(log_link, str) else None
 
         # deal with cases where package fails a pre-build check (no log)
-        if not error_path:
+        if not log_link:
             status_df.loc[idx, "stage"] = "pre-build"  # type: ignore
             status_df.loc[idx, "message_count"] = 1  # type: ignore
             status_df.loc[idx, "Message 1"] = error.parent.text.strip().split(  # type: ignore
@@ -197,11 +307,11 @@ def get_info(status_df: pd.DataFrame) -> None:
             continue
 
         # determine error stage from the error path
-        stage = stage_dict[re.split(r"-|\.", error_path)[-2]]
+        stage = stage_dict[re.split(r"-|\.", log_link)[-2]]
 
         # get the log URL
         data = get_pages_data(package=name, release=is_release,
-                              devel=not is_release, path=error_path)[0]
+                              devel=not is_release, path=log_link)[0]
 
         log = pre.text.replace('â', "'") if (pre := data.find("pre")) else None
 
@@ -282,19 +392,20 @@ def get_issues(status_df: pd.DataFrame) -> dict[str, Optional[tuple[Issue]]]:
         repo_name = "/".join(x for x in url.path.split("/")
                              if x and x != "issues")
 
-        result[name] = tuple(github.get_repo(repo_name).get_issues(state="open"))
+        result[name] = tuple(github.get_repo(
+            repo_name).get_issues(state="open"))
 
     return result
 # %%
 
 
 if __name__ == "__main__":
-    df = get_package_status(devel=True)
+    df = get_package_status_v2(devel=True)
     # get_info(df)
     # pd.to_pickle(df, "saved.pkl")
-    issues = get_issues(df)
+    # issues = get_issues(df)
 
-    print(issues)
+    print(df)
 
 
 # %%

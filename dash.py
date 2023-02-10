@@ -6,19 +6,21 @@ from pickle import load
 from typing import Iterable, Optional
 from warnings import simplefilter
 
+
 import altair as alt
 import numpy as np
 import pandas as pd
 import plotly_express as px
 import streamlit as st
 import streamlit_analytics
+from bs4 import BeautifulSoup
 from github.Issue import Issue
 from st_aggrid import (AgGrid, AgGridReturn, ColumnsAutoSizeMode,
                        GridOptionsBuilder)
 from st_aggrid.shared import GridUpdateMode
 from streamlit_plotly_events import plotly_events
 
-from check import get_download_stats, get_info, get_issues, get_package_status
+from check import get_download_stats, get_issues, get_package_status_v2, get_pages_data
 
 # ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
@@ -51,9 +53,13 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
 
     return selection
 
+# @st.cache_data(ttl=3600)
+def retreive_soup() -> list[BeautifulSoup]:
+    return get_pages_data(devel=True, long=True)
 
-@st.cache(ttl=3600)
-def get_build_data(packages: Optional[Iterable[str]] = None) -> pd.DataFrame:
+
+@st.cache_data(ttl=3600)
+def get_build_data(_data: list[BeautifulSoup], packages: Optional[Iterable[str]] = None) -> pd.DataFrame:
     """Gets the build data necessary for the dashboard.
 
     Args:
@@ -63,13 +69,11 @@ def get_build_data(packages: Optional[Iterable[str]] = None) -> pd.DataFrame:
         pd.DataFrame: The dashboard data.
     """
 
-    status_df = get_package_status(packages=packages, devel=True)
-    get_info(status_df)
-
+    status_df = get_package_status_v2(packages=packages, devel=True, pages_data=_data)
     return status_df
 
 
-@st.cache(ttl=10*3600)
+@st.cache_data(ttl=10*3600)
 def get_dl_data(status_df: pd.DataFrame) -> pd.DataFrame:
     """Gets the download data necessary for the dashboard.
 
@@ -97,7 +101,7 @@ def parse_input(user_input: str) -> list[str]:
     return [x for x in input_list if x]
 
 
-@st.cache(ttl=10*3600, allow_output_mutation=True)
+@st.cache_data(ttl=10*3600)
 def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Optional[tuple[Issue]]]:
     """Gets the issue data necessary for the dashboard.
 
@@ -125,14 +129,23 @@ def run_dash():
     ### A little dashboard for monitoring your Bioconductor packages of interest.
     """)
 
-    package_input = st.text_input(
-        label="Type in some Bioconductor packages separated by \
-               spaces (e.g, BiocCheck BiocGenerics S4Vectors).")
+    pages_data = retreive_soup()
 
-    packages = parse_input(package_input) if package_input else None
+    package_list = [
+        l.text for l in pages_data[1].find_all("a")
+        if l and (h := l.get("href"))
+        and h[1:].strip("/") == l.text
+        and "." in h
+    ]
+
+    packages = st.multiselect(
+        label="Type in some Bioconductor packages separated by \
+               spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
+        options=package_list
+    )
 
     # get the data
-    package_data = get_build_data(packages=packages)
+    package_data = get_build_data(pages_data, packages=packages)
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
@@ -241,7 +254,7 @@ def run_dash():
         st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
 
     with gh_tab:
-        issue_data = get_issue_data(package_data, dev=False)
+        issue_data = get_issue_data(package_data, dev=True)
         st.write("### GitHub Issues")
 
         not_found = [key for key, value in issue_data.items() if value is None]
