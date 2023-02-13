@@ -1,5 +1,5 @@
 """Runs a dashboard to visualise the build status of Bioconductor packages."""
-
+# %%
 from datetime import date
 from os.path import exists, getmtime
 from time import time
@@ -49,14 +49,14 @@ class DashData:
             mtime = min(getmtime("cache/release.html"),
                         getmtime("cache/devel.html"))
 
-            if mtime / (60 * 60) > 8:
+            if (time() - mtime) / 3600 > 8:
                 self.update_soup()
             else:
                 self.soup_age = mtime
                 with open("cache/release.html", "r", encoding="UTF8") as rel:
-                    self.soup.append(BeautifulSoup(rel))
+                    self.soup.append(BeautifulSoup(rel, features="lxml"))
                 with open("cache/devel.html", "r", encoding="UTF8") as devel:
-                    self.soup.append(BeautifulSoup(devel))
+                    self.soup.append(BeautifulSoup(devel, features="lxml"))
         else:
             self.update_soup()
 
@@ -83,9 +83,8 @@ class DashData:
         Returns:
             pd.DataFrame: The package status data.
         """
-        if (up := (time() - self.soup_age) / 3600 > 8) or not self.__status_df:
-            if up:
-                self.update_soup()
+        if (time() - self.soup_age) / 3600 > 8:
+            self.update_soup()
 
             self.__status_df = get_package_status(
                 packages=self.packages,
@@ -93,6 +92,13 @@ class DashData:
                 pages_data=self.soup
             )
             return self.__status_df
+
+        if self.__status_df is None:
+            self.__status_df = get_package_status(
+                packages=self.packages,
+                devel=True,
+                pages_data=self.soup
+            )
 
         return self.__status_df
 
@@ -227,11 +233,8 @@ def run_dash():
 
     with status_tab:
 
-        # get the data
-        package_data = data.status_df
-
         st.write("### Bioconductor Build Status")
-        status_fig = alt.Chart(package_data).mark_square(  # type: ignore
+        status_fig = alt.Chart(data.status_df).mark_square(  # type: ignore
             size=500  # type: ignore
         ).encode(
             x="Name",
@@ -260,7 +263,7 @@ def run_dash():
             "Click on a row to view the message details.",
             " If it is missing, press `r`.")
         selection = aggrid_interactive_table(
-            status_df=package_data.sort_values(["Name"]))
+            status_df=data.status_df.sort_values(["Name"]))
 
         if selection.selected_rows:
             _, name, release, log_level, stage, count, * \
@@ -397,7 +400,10 @@ def run_dash():
 
         # st.bar_chart(issue_plot_data)
 
+# %%
+
 
 if __name__ == "__main__":
-    with streamlit_analytics.track():
-        run_dash()
+    # with streamlit_analytics.track():
+    #     run_dash()
+    data = DashData()
