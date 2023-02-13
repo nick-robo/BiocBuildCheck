@@ -1,11 +1,10 @@
-"""Runs a dashboard to visualise the build status of Bioconductor packages
-"""
+"""Runs a dashboard to visualise the build status of Bioconductor packages."""
 
 from datetime import date
-from pickle import load
-from typing import Iterable, Optional
+from os.path import exists, getmtime
+from time import time
+from typing import Iterable
 from warnings import simplefilter
-
 
 import altair as alt
 import numpy as np
@@ -20,14 +19,121 @@ from st_aggrid import (AgGrid, AgGridReturn, ColumnsAutoSizeMode,
 from st_aggrid.shared import GridUpdateMode
 from streamlit_plotly_events import plotly_events
 
-from check import get_download_stats, get_issues, get_package_status_v2, get_pages_data
+from check import (get_download_stats, get_issues, get_package_status,
+                   get_pages_data)
 
 # ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
 
 
+class DashData:
+    """A container class for all the dash data which handles caching."""
+
+    def __init__(self, packages: Iterable[str] | None = None) -> None:
+        """Create a DashData object.
+
+        Args:
+            packages (Iterable[str] | None, optional):
+                A list of packages. Defaults to None (will load SydneyBioX
+                packages).
+        """
+        if not packages:
+            with open("packages", "r", encoding="utf-8") as file:
+                self.packages = file.read().splitlines()
+        else:
+            self.packages = packages
+
+        # load soup
+        self.soup = []
+        if exists("cache/release.html") and exists("cache/devel.html"):
+            mtime = min(getmtime("cache/release.html"),
+                        getmtime("cache/devel.html"))
+
+            if mtime / (60 * 60) > 8:
+                self.update_soup()
+            else:
+                self.soup_age = mtime
+                with open("cache/release.html", "r", encoding="UTF8") as rel:
+                    self.soup.append(BeautifulSoup(rel))
+                with open("cache/devel.html", "r", encoding="UTF8") as devel:
+                    self.soup.append(BeautifulSoup(devel))
+        else:
+            self.update_soup()
+
+        self.__status_df = None
+        self.__downloads_age = None
+        self.__downloads = None
+        self.__github_age = None
+        self.__github_issues = None
+
+    def update_soup(self) -> None:
+        """Update the Bioconductor build report data and store it."""
+        self.soup = get_pages_data(devel=True, long=True)
+        self.soup_age = time()
+
+        with open("cache/release.html", "w", encoding="UTF8") as release:
+            release.write(str(self.soup[0]))
+        with open("cache/devel.html", "w", encoding="UTF8") as devel:
+            devel.write(str(self.soup[1]))
+
+    @property
+    def status_df(self) -> pd.DataFrame:
+        """Get the status of the packages.
+
+        Returns:
+            pd.DataFrame: The package status data.
+        """
+        if (up := (time() - self.soup_age) / 3600 > 8) or not self.__status_df:
+            if up:
+                self.update_soup()
+
+            self.__status_df = get_package_status(
+                packages=self.packages,
+                devel=True,
+                pages_data=self.soup
+            )
+            return self.__status_df
+
+        return self.__status_df
+
+    @property
+    def downloads(self) -> pd.DataFrame:
+        """Get the download statitics of the packages.
+
+        Returns:
+            pd.DataFrame: The package download statistics.
+        """
+        if not self.__downloads_age or not self.__downloads:
+            self.__downloads = get_download_stats(self.packages)
+            self.__downloads_age = time()
+            return self.__downloads
+
+        age = time() - self.__downloads_age
+
+        if age / (60 * 60) > 8:
+            self.__downloads = get_download_stats(self.packages)
+            self.__downloads_age = time()
+            return self.__downloads
+
+        return self.__downloads
+
+    @property
+    def github_issues(self) -> dict[str, tuple[Issue] | None]:
+        """Get the GitHub issues of each package.
+
+        Returns:
+            dict[str, tuple[Issue] | None]: Dict of Issues by package.
+        """
+        if not self.__github_age or not self.__github_issues:
+            self.__github_issues = get_issues(self.packages)
+            self.__github_age = time()
+            return self.__github_issues
+
+        return self.__github_issues
+
+
 def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
-    """Creates an st-aggrid interactive table based on a dataframe.
+    """Create an st-aggrid interactive table based on a dataframe.
 
     Args:
         df (pd.DataFrame]): Source dataframe
@@ -53,41 +159,9 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
 
     return selection
 
-# @st.cache_data(ttl=3600)
-def retreive_soup() -> list[BeautifulSoup]:
-    return get_pages_data(devel=True, long=True)
 
-
-@st.cache_data(ttl=3600)
-def get_build_data(_data: list[BeautifulSoup], packages: Optional[Iterable[str]] = None) -> pd.DataFrame:
-    """Gets the build data necessary for the dashboard.
-
-    Args:
-        packages (Optional[Iterable[str]], optional): List of packages of interest. Default is None.
-
-    Returns:
-        pd.DataFrame: The dashboard data.
-    """
-
-    status_df = get_package_status_v2(packages=packages, devel=True, pages_data=_data)
-    return status_df
-
-
-@st.cache_data(ttl=10*3600)
-def get_dl_data(status_df: pd.DataFrame) -> pd.DataFrame:
-    """Gets the download data necessary for the dashboard.
-
-    Args:
-        status_df (pd.DataFrame): DataFrame of statuses, generated by `get_build_data`.
-
-    Returns:
-        pd.DataFrame: DF of download stats.
-    """
-    return get_download_stats(status_df=status_df)
-
-
-def parse_input(user_input: str) -> list[str]:
-    """Parses the user input.
+def parse_input(user_input: str, valid_packages: Iterable[str]) -> list[str]:
+    """Parse the user input.
 
     Args:
         user_input (str): The user input.
@@ -95,62 +169,66 @@ def parse_input(user_input: str) -> list[str]:
     Returns:
         list[str]: Parsed input.
     """
-
     input_list = user_input.strip().split(" ")
 
-    return [x for x in input_list if x]
+    valid, invalid = [], []
 
+    for package in input_list:
+        if not package:
+            continue
 
-@st.cache_data(ttl=10*3600)
-def get_issue_data(status_df: pd.DataFrame, dev: bool = False) -> dict[str, Optional[tuple[Issue]]]:
-    """Gets the issue data necessary for the dashboard.
+        if package not in valid_packages:
+            invalid.append(package)
+        else:
+            valid.append(package)
 
-    Args:
-        status_df (pd.DataFrame): DataFrame of statuses, generated by `get_build_data`.
+    if invalid:
+        sep = ", " if (n_inv := len(invalid)) > 2 else ""
+        message = ", ".join(invalid[:-2]) + sep + " and ".join(invalid[-2:]) \
+            if n_inv >= 2 else invalid[0]
 
-    Returns:
-        pd.DataFrame: DF of download stats.
-    """
-    if dev:
-        with open("issues.pkl", "rb") as file:
-            issues = load(file)
-    else:
-        issues = get_issues(status_df)
+        st.warning(
+            f"{message} {'are' if n_inv > 1 else 'is'} not " +
+            f"{'a ' if n_inv == 1 else ''}valid Bioconductor package" +
+            f"{'s' if n_inv > 1 else ''}."
+        )
 
-    return issues
+    return valid
 
 
 def run_dash():
-    """Generates the dashboard.
-    """
-
+    """Generate the dashboard."""
     st.title("Package Status Dashboard")
     st.write("""
-    ### A little dashboard for monitoring your Bioconductor packages of interest.
+    ### A small dashboard for monitoring your Bioconductor packages.
     """)
 
-    pages_data = retreive_soup()
+    data = DashData()
 
     package_list = [
-        l.text for l in pages_data[1].find_all("a")
-        if l and (h := l.get("href"))
-        and h[1:].strip("/") == l.text
-        and "." in h
+        link.text for link in data.soup[1].find_all("a")
+        if link and (href := link.get("href"))
+        and href[1:].strip("/") == link.text
+        and "." in href
     ]
 
-    packages = st.multiselect(
+    package_input = st.text_input(
         label="Type in some Bioconductor packages separated by \
                spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
-        options=package_list
     )
 
-    # get the data
-    package_data = get_build_data(pages_data, packages=packages)
+    packages = parse_input(
+        package_input, package_list) if package_input else None
+    # update DashData if packages is not None
+    data = data if not packages else DashData(packages=packages)
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
 
     with status_tab:
+
+        # get the data
+        package_data = data.status_df
 
         st.write("### Bioconductor Build Status")
         status_fig = alt.Chart(package_data).mark_square(  # type: ignore
@@ -165,7 +243,10 @@ def run_dash():
                 scale=alt.Scale(  # type: ignore
                     domain=["OK", "WARNINGS", "ERROR",
                             "NOT FOUND", "TIMEOUT"],  # type: ignore
-                    range=["green", "orange", "red", "purple", "blue"])  # type: ignore
+                    range=[
+                        "green", "orange", "red", "purple", "blue"
+                    ]  # type: ignore
+                )
             )
         ).configure_axis(
             labelFontSize=18
@@ -176,7 +257,8 @@ def run_dash():
         st.altair_chart(status_fig, use_container_width=True)
 
         st.write(
-            "Click on a row to view the message details. If it is missing, press `r`.")
+            "Click on a row to view the message details.",
+            " If it is missing, press `r`.")
         selection = aggrid_interactive_table(
             status_df=package_data.sort_values(["Name"]))
 
@@ -185,10 +267,10 @@ def run_dash():
                 messages = selection.selected_rows[0].values()
             if log_level == "OK":
                 st.write(
-                    f"### There were no problems in the *{release}* build of **{name}**.")
+                    f"### No problems in the *{release}* build of **{name}**.")
             elif log_level == "NOT FOUND":
                 st.write(
-                    f"### **{name}** was not found in the list of Bioconductor packages.")
+                    f"### **{name}** was not found in Bioconductor.")
             else:
                 # change warnings to warning if message count is smaller than 2
                 log_level = "warning" if (
@@ -202,7 +284,7 @@ def run_dash():
                     st.code(message, language="r")
 
     with download_tab:
-        dl_data = get_dl_data(package_data)
+        dl_data = data.downloads
 
         st.write("### Filters")
 
@@ -254,7 +336,9 @@ def run_dash():
         st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
 
     with gh_tab:
-        issue_data = get_issue_data(package_data, dev=True)
+
+        issue_data = data.github_issues
+
         st.write("### GitHub Issues")
 
         not_found = [key for key, value in issue_data.items() if value is None]
@@ -262,7 +346,8 @@ def run_dash():
         if not_found:
             # st.write(not_found)
             missing_str = (
-                " and ".join("*" + x + "*" for x in not_found) if len(not_found) == 2
+                " and ".join("*" + x + "*" for x in not_found)
+                if len(not_found) == 2
                 else ", ".join(not_found)
             )
             st.write(
@@ -285,7 +370,8 @@ def run_dash():
                            template="plotly_dark")
 
         st.write(
-            "**Click** on the plot below to see issues of intest. If it is missing, press `r`.")
+            "**Click** on the plot below to see issues of intest.",
+            " If it is missing, press `r`.")
         selected = plotly_events(issue_fig)
 
         if selected:
@@ -300,7 +386,8 @@ def run_dash():
 
                 for i, issue in enumerate(selected_issues):
                     st.write(
-                        f"**Issue {i+1}**: [{issue.title}]({issue.html_url}) (#{issue.number})")
+                        f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
+                        " (#{issue.number})")
 
                     with st.expander("Show issue"):
                         st.markdown(issue.body.strip("\r"))

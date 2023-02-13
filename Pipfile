@@ -17,11 +17,12 @@ numpy = "*"
 pygithub = "*"
 "plotly.express" = "*"
 streamlit-plotly-events = "*"
+flake8-docstrings = "*"
 
 [dev-packages]
 ipykernel = "*"
 autopep8 = "*"
-pylint = "*"
+flake8 = "*"
 
 [requires]
 python_version = "3.10"
