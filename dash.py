@@ -4,7 +4,7 @@ from datetime import date
 from os.path import exists, getmtime
 from os import makedirs
 from time import time
-from typing import Iterable, Any
+from typing import Iterable
 from warnings import simplefilter
 
 import altair as alt
@@ -65,6 +65,13 @@ class DashData:
         else:
             self.update_soup()
 
+        self.valid_packages = [
+            link.text for link in self.soup[1].find_all("a")
+            if link and (href := link.get("href"))
+            and href[1:].strip("/") == link.text
+            and "." in href
+        ]
+
         self.__status_df = get_package_status(
             packages=self.packages,
             devel=True,
@@ -93,7 +100,6 @@ class DashData:
         Returns:
             pd.DataFrame: The package status data.
         """
-
         if (time() - self.soup_age) / 3600 > 8:
             self.update_soup()
 
@@ -152,6 +158,46 @@ class DashData:
 
         return self.__github_issues
 
+    def parse_input(self, user_input: str) -> None:
+        """Parse the user input.
+
+        Args:
+            user_input (str): The user input.
+
+        Returns:
+            list[str]: Parsed input.
+        """
+        input_list = user_input.strip().split(" ")
+
+        valid, inv = [], []
+
+        for package in input_list:
+            if not package:
+                continue
+
+            if package not in self.valid_packages:
+                inv.append(package)
+            else:
+                valid.append(package)
+
+        if inv:
+            sep = ", " if (n_inv := len(inv)) > 2 else ""
+            message = ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:]) \
+                if n_inv >= 2 else inv[0]
+
+            st.warning(
+                f"{message} {'are' if n_inv > 1 else 'is'} not " +
+                f"{'a ' if n_inv == 1 else ''}valid Bioconductor package" +
+                f"{'s' if n_inv > 1 else ''}."
+            )
+
+        if valid:
+            self.packages = valid
+
+            self.__downloads = None
+            self.__github_issues = None
+            self.__status_df = None
+
 
 def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     """Create an st-aggrid interactive table based on a dataframe.
@@ -182,44 +228,8 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
 
 
 def chunker(seq, size):
+    """Transform ['a', 'b' ,'c'] into ['a', 'b'], ['c'] if size is 2."""
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
-
-
-def parse_input(user_input: str, valid_packages: Any) -> list[str]:
-    """Parse the user input.
-
-    Args:
-        user_input (str): The user input.
-
-    Returns:
-        list[str]: Parsed input.
-    """
-
-    input_list = user_input.strip().split(" ")
-
-    valid, invalid = [], []
-
-    for package in input_list:
-        if not package:
-            continue
-
-        if package not in valid_packages:
-            invalid.append(package)
-        else:
-            valid.append(package)
-
-    if invalid:
-        sep = ", " if (n_inv := len(invalid)) > 2 else ""
-        message = ", ".join(invalid[:-2]) + sep + " and ".join(invalid[-2:]) \
-            if n_inv >= 2 else invalid[0]
-
-        st.warning(
-            f"{message} {'are' if n_inv > 1 else 'is'} not " +
-            f"{'a ' if n_inv == 1 else ''}valid Bioconductor package" +
-            f"{'s' if n_inv > 1 else ''}."
-        )
-
-    return valid
 
 
 def run_dash():
@@ -228,38 +238,24 @@ def run_dash():
     st.write("""
     ### A small dashboard for monitoring your Bioconductor packages.
     """)
-    packages = []
 
     package_input = st.text_input(
         label="Type in some Bioconductor packages separated by \
                spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
     )
 
-    if vars().get("scraped") is None:
-        with st.spinner("Scraping Bioconductor."):
-            data = DashData()
-            scraped = True  # noqa: F841
-            valid_packages = [
-                link.text for link in data.soup[1].find_all("a")
-                if link and (href := link.get("href"))
-                and href[1:].strip("/") == link.text
-                and "." in href
-            ]
-    else:
-        valid_packages = vars().get("valid_packages")
+    with st.spinner("Scraping Bioconductor (this can take ~10 seconds)."):
+        data = DashData()
 
-    packages = parse_input(
-        package_input, valid_packages) if package_input else None
-
-    with st.spinner("Getting the dashboard data."):
-        data = DashData(packages=packages)
+    if package_input:
+        data.parse_input(package_input)
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
 
     with status_tab:
-
-        status_data = data.status_df
+        with st.spinner("Updating build status."):
+            status_data = data.status_df
 
         st.write("### Bioconductor Build Status")
 
@@ -320,7 +316,8 @@ def run_dash():
                     st.code(message, language="r")
 
     with download_tab:
-        dl_data = data.downloads
+        with st.spinner("Updating download stats."):
+            dl_data = data.downloads
 
         st.write("### Filters")
 
@@ -377,7 +374,8 @@ def run_dash():
 
     with gh_tab:
 
-        issue_data = data.github_issues
+        with st.spinner("Updating GitHub data."):
+            issue_data = data.github_issues
 
         st.write("### GitHub Issues")
 
