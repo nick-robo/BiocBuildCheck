@@ -276,6 +276,10 @@ def run_dash():
 
     data.parse_input(package_input)
 
+    if (time() - data.soup_age) / (3600) > 8:
+        st.warning("The scraped data are more than 8 hours old," +
+                   " consider refreshing the page.")
+
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
 
