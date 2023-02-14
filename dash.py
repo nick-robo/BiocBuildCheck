@@ -280,7 +280,10 @@ def run_dash():
         st.warning("The scraped data are more than 8 hours old," +
                    " consider refreshing the page.")
     else:
-        st.info(f"These data are ~{round(age)} hours old.")
+        st.info(
+            f"These data are ~{round(age)}" +
+            f" hour{'' if round(age) == 1 else 's'} old."
+        )
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
