@@ -281,7 +281,7 @@ def run_dash():
                    " consider refreshing the page.")
     else:
         st.info(
-            f"These data are ~{round(age)}" +
+            f"These data are about {round(age)}" +
             f" hour{'' if round(age) == 1 else 's'} old."
         )
 
