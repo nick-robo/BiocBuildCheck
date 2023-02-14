@@ -2,8 +2,9 @@
 # %%
 from datetime import date
 from os.path import exists, getmtime
+from os import makedirs
 from time import time
-from typing import Iterable
+from typing import Iterable, Any
 from warnings import simplefilter
 
 import altair as alt
@@ -37,11 +38,15 @@ class DashData:
                 A list of packages. Defaults to None (will load SydneyBioX
                 packages).
         """
+        makedirs("cache", exist_ok=True)
+
         if not packages:
             with open("packages", "r", encoding="utf-8") as file:
                 self.packages = file.read().splitlines()
+            self.sydneybiox = True
         else:
             self.packages = packages
+            self.sydneybiox = False
 
         # load soup
         self.soup = []
@@ -53,14 +58,19 @@ class DashData:
                 self.update_soup()
             else:
                 self.soup_age = mtime
-                with open("cache/release.html", "r", encoding="UTF8") as rel:
+                with open("cache/release.html", "r") as rel:
                     self.soup.append(BeautifulSoup(rel, features="lxml"))
-                with open("cache/devel.html", "r", encoding="UTF8") as devel:
+                with open("cache/devel.html", "r") as devel:
                     self.soup.append(BeautifulSoup(devel, features="lxml"))
         else:
             self.update_soup()
 
-        self.__status_df = None
+        self.__status_df = get_package_status(
+            packages=self.packages,
+            devel=True,
+            pages_data=self.soup
+        )
+
         self.__downloads_age = None
         self.__downloads = None
         self.__github_age = None
@@ -71,9 +81,9 @@ class DashData:
         self.soup = get_pages_data(devel=True, long=True)
         self.soup_age = time()
 
-        with open("cache/release.html", "w", encoding="UTF8") as release:
+        with open("cache/release.html", "w") as release:
             release.write(str(self.soup[0]))
-        with open("cache/devel.html", "w", encoding="UTF8") as devel:
+        with open("cache/devel.html", "w") as devel:
             devel.write(str(self.soup[1]))
 
     @property
@@ -83,6 +93,7 @@ class DashData:
         Returns:
             pd.DataFrame: The package status data.
         """
+
         if (time() - self.soup_age) / 3600 > 8:
             self.update_soup()
 
@@ -110,7 +121,11 @@ class DashData:
             pd.DataFrame: The package download statistics.
         """
         if not self.__downloads_age or not self.__downloads:
-            self.__downloads = get_download_stats(self.packages)
+            try:
+                self.__downloads = get_download_stats(self.packages)
+            except Exception as e:
+                raise ValueError(f"Invalid packages: {self.packages}",
+                                 f"Error: {e}")
             self.__downloads_age = time()
             return self.__downloads
 
@@ -166,7 +181,11 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     return selection
 
 
-def parse_input(user_input: str, valid_packages: Iterable[str]) -> list[str]:
+def chunker(seq, size):
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+
+
+def parse_input(user_input: str, valid_packages: Any) -> list[str]:
     """Parse the user input.
 
     Args:
@@ -175,6 +194,7 @@ def parse_input(user_input: str, valid_packages: Iterable[str]) -> list[str]:
     Returns:
         list[str]: Parsed input.
     """
+
     input_list = user_input.strip().split(" ")
 
     valid, invalid = [], []
@@ -208,65 +228,78 @@ def run_dash():
     st.write("""
     ### A small dashboard for monitoring your Bioconductor packages.
     """)
-
-    data = DashData()
-
-    package_list = [
-        link.text for link in data.soup[1].find_all("a")
-        if link and (href := link.get("href"))
-        and href[1:].strip("/") == link.text
-        and "." in href
-    ]
+    packages = []
 
     package_input = st.text_input(
         label="Type in some Bioconductor packages separated by \
                spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
     )
 
+    if vars().get("scraped") is None:
+        with st.spinner("Scraping Bioconductor."):
+            data = DashData()
+            scraped = True  # noqa: F841
+            valid_packages = [
+                link.text for link in data.soup[1].find_all("a")
+                if link and (href := link.get("href"))
+                and href[1:].strip("/") == link.text
+                and "." in href
+            ]
+    else:
+        valid_packages = vars().get("valid_packages")
+
     packages = parse_input(
-        package_input, package_list) if package_input else None
-    # update DashData if packages is not None
-    data = data if not packages else DashData(packages=packages)
+        package_input, valid_packages) if package_input else None
+
+    with st.spinner("Getting the dashboard data."):
+        data = DashData(packages=packages)
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
 
     with status_tab:
 
-        st.write("### Bioconductor Build Status")
-        status_fig = alt.Chart(data.status_df).mark_square(  # type: ignore
-            size=500  # type: ignore
-        ).encode(
-            x="Name",
-            y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
-            color=alt.Color(
-                "Log Level",  # type: ignore
-                sort=["OK", "WARNINGS", "ERROR",
-                      "NOT FOUND", "TIMEOUT"],  # type: ignore
-                scale=alt.Scale(  # type: ignore
-                    domain=["OK", "WARNINGS", "ERROR",
-                            "NOT FOUND", "TIMEOUT"],  # type: ignore
-                    range=[
-                        "green", "orange", "red", "purple", "blue"
-                    ]  # type: ignore
-                )
-            )
-        ).configure_axis(
-            labelFontSize=18
-        ).properties(
-            height=250
-        )
+        status_data = data.status_df
 
-        st.altair_chart(status_fig, use_container_width=True)
+        st.write("### Bioconductor Build Status")
+
+        for names in chunker(list(set(data.packages)), 12):
+            status_fig = alt.Chart(
+                status_data[status_data.Name.isin(names)]  # type: ignore
+            ).mark_square(  # type: ignore
+                size=500  # type: ignore
+            ).encode(
+                x="Name",
+                y=alt.Y(
+                    "Release:N", sort=("release", "devel")),  # type: ignore
+                color=alt.Color(
+                    "Log Level",  # type: ignore
+                    sort=["OK", "WARNINGS", "ERROR",
+                          "TIMEOUT"],  # type: ignore
+                    scale=alt.Scale(  # type: ignore
+                        domain=["OK", "WARNINGS", "ERROR",
+                                "TIMEOUT"],  # type: ignore
+                        range=[
+                            "green", "orange", "red", "purple"
+                        ]  # type: ignore
+                    )
+                )
+            ).configure_axis(
+                labelFontSize=18
+            ).properties(
+                height=250
+            )
+
+            st.altair_chart(status_fig, use_container_width=True)
 
         st.write(
             "Click on a row to view the message details.",
             " If it is missing, press `r`.")
         selection = aggrid_interactive_table(
-            status_df=data.status_df.sort_values(["Name"]))
+            status_df=status_data.sort_values(["Name"]))
 
         if selection.selected_rows:
-            _, name, release, log_level, stage, count, * \
+            _, name, release, _, _,  log_level, stage, count, * \
                 messages = selection.selected_rows[0].values()
             if log_level == "OK":
                 st.write(
@@ -304,6 +337,7 @@ def run_dash():
             format="MMM YYYY",
         )
         log = st.checkbox("Log scale")
+        ips = st.checkbox("Distinct IPs")
 
         min_date, max_date = [date(x.year, x.month, 1) for x in dates]
 
@@ -324,8 +358,11 @@ def run_dash():
             .mark_line()
             .encode(
                 x="yearmonth(Date)",
-                y=alt.Y("Downloads", scale=alt.Scale(  # type: ignore
-                    type="symlog" if log else "linear")),  # type: ignore
+                y=alt.Y(
+                    "Downloads" if not ips else "Distinct IPs",  # type: ignore
+                    scale=alt.Scale(
+                        type="symlog" if log else "linear")  # type: ignore
+                ),
                 color="Name"
             )
         ).properties(
@@ -404,6 +441,6 @@ def run_dash():
 
 
 if __name__ == "__main__":
-    # with streamlit_analytics.track():
-    #     run_dash()
-    data = DashData()
+    with streamlit_analytics.track():
+        run_dash()
+    # data = DashData()

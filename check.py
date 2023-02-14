@@ -117,7 +117,9 @@ def get_pages_data(
         page = requests.get(url, timeout=5)
         if not page.ok:
             raise Exception(f"Couldn't fetch url: {url}")
-        pages_data.append(bs4.BeautifulSoup(page.text, features="lxml"))
+        pages_data.append(
+            bs4.BeautifulSoup(page.content.decode('utf-8'), features="lxml")
+        )
 
     return pages_data
 
@@ -195,7 +197,7 @@ def get_package_status(
 
             if name not in package_dict.keys():
                 status_dict[i] = (name, release, pd.NA,
-                                  pd.NA, "NOT FOUND", pd.NA)
+                                  pd.NA, "NOT FOUND", pd.NA, 0)
                 continue
 
             # get the card class, a container for all details about the build
@@ -270,16 +272,24 @@ def get_download_stats(packages: pd.DataFrame | Iterable[str]) -> pd.DataFrame:
     dfs = []
     for name in package_names:
         now = datetime.now()  # noqa: F841
+        try:
+            query_df = pd.read_csv(data_url(name), delimiter="\t")
+        except Exception as e:
+            print(packages)
+            raise ValueError(f"Invalid URL: {data_url(name)}.",
+                             f"Error: {e}")
         dfs.append(
-            pd.read_csv(data_url(name), delimiter="\t")
+            query_df
             .query("Month != 'all'")  # remove month totals
-            .drop("Nb_of_distinct_IPs", axis=1)  # drop distinct IPs
+            # .drop("Nb_of_distinct_IPs", axis=1)  # drop distinct IPs
             .assign(Name=name)  # create column with package name
             # reorder columns and create `datetime` "Date" columns
             .pipe(lambda df: pd.DataFrame({
                 "Name": df.Name,
                 "Date": pd.to_datetime(df.Year.astype('str') + "-" + df.Month),
-                "Downloads": df.Nb_of_downloads}))
+                "Downloads": df.Nb_of_downloads,
+                "Distinct IPs": df.Nb_of_distinct_IPs})
+            )
             .query("Date < @now")  # remove dates in the future
         )
 
@@ -354,7 +364,7 @@ if __name__ == "__main__":
     with open("packages", "r", encoding="utf-8") as package_file:
         sydneybiox_packages = package_file.read().splitlines()
 
-    df = get_package_status(sydneybiox_packages, devel=True)
+    df = get_package_status(["BiocGenerics"], devel=True)
     # get_info(df)
     # pd.to_pickle(df, "saved.pkl")
     # issues = get_issues(df)
