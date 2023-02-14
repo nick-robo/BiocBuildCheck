@@ -43,10 +43,9 @@ class DashData:
         if not packages:
             with open("packages", "r", encoding="utf-8") as file:
                 self.packages = file.read().splitlines()
-            self.sydneybiox = True
+                self.sydneybiox_packs = set(self.packages.copy())
         else:
             self.packages = packages
-            self.sydneybiox = False
 
         # load soup
         self.soup = []
@@ -93,6 +92,34 @@ class DashData:
         with open("cache/devel.html", "w") as devel:
             devel.write(str(self.soup[1]))
 
+    def update_packages(self, packages: Iterable[str]) -> None:
+        """Update package list in data.
+
+        Args:
+            packages (Iterable[str]): New packages.
+        """
+        # if packages is empty
+        if not packages:
+            if set(self.packages) == self.sydneybiox_packs:
+                return
+
+            self.packages = list(self.sydneybiox_packs)
+            self.reset_data()
+            return
+
+        # do nothing if packs unchanged
+        if set(packages) == set(self.packages):
+            return
+
+        self.packages = packages
+        self.reset_data()
+
+    def reset_data(self):
+        """Reset stored data."""
+        self.__downloads = None
+        self.__github_issues = None
+        self.__status_df = None
+
     @property
     def status_df(self) -> pd.DataFrame:
         """Get the status of the packages.
@@ -126,7 +153,7 @@ class DashData:
         Returns:
             pd.DataFrame: The package download statistics.
         """
-        if not self.__downloads_age or not self.__downloads:
+        if self.__downloads_age is None or self.__downloads is None:
             try:
                 self.__downloads = get_download_stats(self.packages)
             except Exception as e:
@@ -151,7 +178,7 @@ class DashData:
         Returns:
             dict[str, tuple[Issue] | None]: Dict of Issues by package.
         """
-        if not self.__github_age or not self.__github_issues:
+        if not self.__github_age or self.__github_issues is None:
             self.__github_issues = get_issues(self.packages)
             self.__github_age = time()
             return self.__github_issues
@@ -191,12 +218,7 @@ class DashData:
                 f"{'s' if n_inv > 1 else ''}."
             )
 
-        if valid:
-            self.packages = valid
-
-            self.__downloads = None
-            self.__github_issues = None
-            self.__status_df = None
+        self.update_packages(valid)
 
 
 def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
@@ -236,19 +258,23 @@ def run_dash():
     """Generate the dashboard."""
     st.title("Package Status Dashboard")
     st.write("""
-    ### A small dashboard for monitoring your Bioconductor packages.
+    ### A dashboard for monitoring Bioconductor packages.
     """)
 
     package_input = st.text_input(
         label="Type in some Bioconductor packages separated by \
                spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
     )
+    if 'data' not in st.session_state:
+        with st.spinner("Scraping Bioconductor (this can take ~10 seconds)."):
+            data = DashData()
+            st.session_state["data"] = data
+    else:
+        data = st.session_state['data']
 
-    with st.spinner("Scraping Bioconductor (this can take ~10 seconds)."):
-        data = DashData()
+    # assert isinstance(data, DashData)
 
-    if package_input:
-        data.parse_input(package_input)
+    data.parse_input(package_input)
 
     status_tab, download_tab, gh_tab = st.tabs(
         ["Bioc Build Status", "Downloads", "GitHub Issues"])
