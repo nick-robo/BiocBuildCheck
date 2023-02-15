@@ -459,7 +459,7 @@ def run_dash():
                 for i, issue in enumerate(selected_issues):
                     st.write(
                         f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
-                        " (#{issue.number})")
+                        f" (#{issue.number})")
 
                     with st.expander("Show issue"):
                         st.markdown(issue.body.strip("\r"))
