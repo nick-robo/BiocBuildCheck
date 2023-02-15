@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import plotly_express as px
 import streamlit as st
-import streamlit_analytics
 from bs4 import BeautifulSoup
 from github.Issue import Issue
 from st_aggrid import (AgGrid, AgGridReturn, ColumnsAutoSizeMode,
@@ -474,6 +473,5 @@ def run_dash():
 
 
 if __name__ == "__main__":
-    with streamlit_analytics.track():
-        run_dash()
+    run_dash()
     # data = DashData()
