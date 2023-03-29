@@ -305,10 +305,15 @@ def get_descrption_data(name: str) -> dict[str, str]:
     Returns:
         dict[str, str]: The DESCRIPTION file as a dictionary.
     """
-    base = "https://bioconductor.org/packages/release/bioc/html/"
+    base = "https://bioconductor.org/packages/devel/bioc/html/"
 
-    data = pd.read_html(base + name + ".html",
-                        attrs={"class": "details"})[0].fillna("")
+    try:
+        data = pd.read_html(base + name + ".html",
+                            attrs={"class": "details"})[0].fillna("")
+    except Exception as e:
+        print(name)
+        raise ValueError(f"Invalid URL: {base + name + '.html'}.",
+                         f"Error: {e}")
     data.columns = ["key", "value"]
 
     return data.set_index("key").to_dict()["value"]
