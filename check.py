@@ -274,10 +274,8 @@ def get_download_stats(packages: pd.DataFrame | Iterable[str]) -> pd.DataFrame:
         now = datetime.now()  # noqa: F841
         try:
             query_df = pd.read_csv(data_url(name), delimiter="\t")
-        except Exception as e:
-            print(packages)
-            raise ValueError(f"Invalid URL: {data_url(name)}.",
-                             f"Error: {e}")
+        except Exception:  # package has no download data
+            continue
         dfs.append(
             query_df
             .query("Month != 'all'")  # remove month totals
@@ -344,7 +342,10 @@ def get_issues(
     github = Github(pat)
 
     for name in package_names:
-        data = get_descrption_data(name)
+        try:
+            data = get_descrption_data(name)
+        except Exception:  # package doesn't have a page yet
+            continue
 
         if not ("BugReports" in data.keys()) or not data["BugReports"]:
             result[name] = None
