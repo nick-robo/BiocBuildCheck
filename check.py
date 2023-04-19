@@ -348,8 +348,7 @@ def get_issues(
             result[name] = None
             continue
 
-
-        if not ("BugReports" in data.keys()) or not data["BugReports"]:
+        if 'BugReports' not in data.keys() or not data["BugReports"]:
             result[name] = None
             continue
 
