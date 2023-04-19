@@ -345,7 +345,9 @@ def get_issues(
         try:
             data = get_descrption_data(name)
         except Exception:  # package doesn't have a page yet
+            result[name] = None
             continue
+
 
         if not ("BugReports" in data.keys()) or not data["BugReports"]:
             result[name] = None
