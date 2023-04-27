@@ -293,7 +293,7 @@ def run_dash():
 
         st.write("### Bioconductor Build Status")
 
-        for names in chunker(list(set(data.packages)), 6):
+        for names in chunker(list(set(data.packages)), 7):
             status_fig = alt.Chart(
                 status_data[status_data.Name.isin(names)]  # type: ignore
             ).mark_square(  # type: ignore
