@@ -447,7 +447,8 @@ def run_dash():
         st.write(
             "**Click** on the plot below to see issues of intest.",
             " If it is missing, press `r`.")
-        selected = plotly_events(issue_fig)
+        with st.container():
+            selected = plotly_events(issue_fig)
 
         if selected:
             # st.write(selected)
