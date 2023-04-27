@@ -440,6 +440,7 @@ def run_dash():
 
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
                            template="plotly_dark")
+        issue_fig.update_xaxes(tickangle=45)
 
         st.write(
             "**Click** on the plot below to see issues of intest.",
