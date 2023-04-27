@@ -255,6 +255,10 @@ def chunker(seq, size):
 
 def run_dash():
     """Generate the dashboard."""
+    
+    st.set_page_config(
+        page_title="Package Status Dashboard",
+    )
     st.title("Package Status Dashboard")
     st.write("""
     ### A dashboard for monitoring Bioconductor packages.
@@ -290,8 +294,6 @@ def run_dash():
     with status_tab:
         with st.spinner("Updating build status."):
             status_data = data.status_df
-
-        st.write("### Bioconductor Build Status")
 
         for names in chunker(list(set(data.packages)), 15):
             status_fig = alt.Chart(
@@ -355,7 +357,6 @@ def run_dash():
         with st.spinner("Updating download stats."):
             dl_data = data.downloads
 
-        st.write("### Filters")
 
         include = st.multiselect(
             label="Choose which packages to include.",
@@ -402,7 +403,6 @@ def run_dash():
             height=400
         )
 
-        st.write("### Plot")
 
         st.altair_chart(dl_fig, use_container_width=True)
 
@@ -413,7 +413,6 @@ def run_dash():
         with st.spinner("Updating GitHub data."):
             issue_data = data.github_issues
 
-        st.write("### GitHub Issues")
 
         not_found = [key for key, value in issue_data.items() if value is None]
 
@@ -443,7 +442,7 @@ def run_dash():
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
                            labels={"Name": ""},
                            template="plotly_dark")
-        issue_fig.update_xaxes(tickangle=45)
+        issue_fig.update_xaxes(tickangle=-90, ticks="outside")
 
         st.write(
             "**Click** on the plot below to see issues of intest.",
