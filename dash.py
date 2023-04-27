@@ -316,8 +316,10 @@ def run_dash():
                 )
             ).configure_axis(
                 labelFontSize=18
+            ).configure_legend(
+                orient='bottom'
             ).properties(
-                height=250
+                height=350
             )
 
             st.altair_chart(status_fig, use_container_width=True)
@@ -439,6 +441,7 @@ def run_dash():
         ).set_index("Name")
 
         issue_fig = px.bar(issue_plot_data, y="Issue Count",
+                           labels={"Name": ""},
                            template="plotly_dark")
         issue_fig.update_xaxes(tickangle=45)
 
