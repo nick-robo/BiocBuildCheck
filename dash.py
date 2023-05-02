@@ -255,7 +255,6 @@ def chunker(seq, size):
 
 def run_dash():
     """Generate the dashboard."""
-    
     st.set_page_config(
         page_title="Package Status Dashboard",
     )
@@ -357,7 +356,6 @@ def run_dash():
         with st.spinner("Updating download stats."):
             dl_data = data.downloads
 
-
         include = st.multiselect(
             label="Choose which packages to include.",
             options=dl_data.Name.unique(),  # type: ignore
@@ -403,7 +401,6 @@ def run_dash():
             height=400
         )
 
-
         st.altair_chart(dl_fig, use_container_width=True)
 
         st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
@@ -412,7 +409,6 @@ def run_dash():
 
         with st.spinner("Updating GitHub data."):
             issue_data = data.github_issues
-
 
         not_found = [key for key, value in issue_data.items() if value is None]
 
