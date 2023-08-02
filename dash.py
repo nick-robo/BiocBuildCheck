@@ -294,7 +294,7 @@ def run_dash():
         with st.spinner("Updating build status."):
             status_data = data.status_df
 
-        for names in chunker(list(set(data.packages)), 15):
+        for names in chunker(list(set(data.packages)), 20):
             status_fig = alt.Chart(
                 status_data[status_data.Name.isin(names)]  # type: ignore
             ).mark_square(  # type: ignore
