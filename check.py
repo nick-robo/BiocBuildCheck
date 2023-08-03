@@ -196,8 +196,8 @@ def get_package_status(
             i = 0 if i is None else i + 1
 
             if name not in package_dict.keys():
-                status_dict[i] = (name, release, pd.NA,
-                                  pd.NA, "NOT FOUND", pd.NA, 0)
+                status_dict[i] = [name, release, pd.NA,
+                                  pd.NA, "NOT FOUND", pd.NA, 0]
                 continue
 
             # get the card class, a container for all details about the build
@@ -215,17 +215,17 @@ def get_package_status(
             # for each package status
             for status in status_list:
                 if status == "ok":
-                    status_dict[i] = (name, release, version,
-                                      maintainer, "OK", pd.NA, 0)
+                    status_dict[i] = [name, release, version,
+                                      maintainer, "OK", pd.NA, 0]
                     break
 
                 log_link = card.find(class_=status.upper()).parent.get("href")
 
                 if not log_link:
-                    status_dict[i] = (
+                    status_dict[i] = [
                         name, release, version, maintainer, "pre-build",
                         1, card.find(class_=status.upper()).parent.text
-                    )
+                    ]
                     max_message_count = max(1, max_message_count)
 
                 stage = stage_dict[re.split(r"-|\.", log_link)[-2]]
@@ -235,13 +235,18 @@ def get_package_status(
                 message_count = len(messages)
                 max_message_count = max(message_count, max_message_count)
 
-                status_dict[i] = (
+                status_dict[i] = [
                     name, release, version, maintainer, status, stage,
                     message_count, *messages
-                )
+                ]
 
     col_names.extend(["Message " + str(j + 1)
                      for j in range(max_message_count)])
+
+    max_len = 7 + max_message_count
+
+    for i in range(len(status_dict)):
+        status_dict[i] += [pd.NA] * (max_len - len(status_dict[i]))
 
     data = pd.DataFrame.from_dict(
         status_dict, orient="index", columns=col_names)
