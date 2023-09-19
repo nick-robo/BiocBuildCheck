@@ -14,13 +14,17 @@ import plotly_express as px
 import streamlit as st
 from bs4 import BeautifulSoup
 from github.Issue import Issue
-from st_aggrid import (AgGrid, AgGridReturn, ColumnsAutoSizeMode,
-                       GridOptionsBuilder)
+from st_aggrid import AgGrid, AgGridReturn, ColumnsAutoSizeMode, GridOptionsBuilder
 from st_aggrid.shared import GridUpdateMode
 from streamlit_plotly_events import plotly_events
 
-from check import (get_download_stats, get_issues, get_package_status,
-                   get_pages_data)
+from check import (
+    get_download_stats,
+    get_issues,
+    get_package_status,
+    get_pages_data,
+    BiocDownloadsError,
+)
 
 # ignore fufturewarning thrown by AgGrid
 simplefilter("ignore", FutureWarning)
@@ -49,8 +53,7 @@ class DashData:
         # load soup
         self.soup = []
         if exists("cache/release.html") and exists("cache/devel.html"):
-            mtime = min(getmtime("cache/release.html"),
-                        getmtime("cache/devel.html"))
+            mtime = min(getmtime("cache/release.html"), getmtime("cache/devel.html"))
 
             if (time() - mtime) / 3600 > 8:
                 self.update_soup()
@@ -64,16 +67,16 @@ class DashData:
             self.update_soup()
 
         self.valid_packages = [
-            link.text for link in self.soup[1].find_all("a")
-            if link and (href := link.get("href"))
+            link.text
+            for link in self.soup[1].find_all("a")
+            if link
+            and (href := link.get("href"))
             and href[1:].strip("/") == link.text
             and "." in href
         ]
 
         self.__status_df = get_package_status(
-            packages=self.packages,
-            devel=True,
-            pages_data=self.soup
+            packages=self.packages, devel=True, pages_data=self.soup
         )
 
         self.__downloads_age = None
@@ -130,23 +133,19 @@ class DashData:
             self.update_soup()
 
             self.__status_df = get_package_status(
-                packages=self.packages,
-                devel=True,
-                pages_data=self.soup
+                packages=self.packages, devel=True, pages_data=self.soup
             )
             return self.__status_df
 
         if self.__status_df is None:
             self.__status_df = get_package_status(
-                packages=self.packages,
-                devel=True,
-                pages_data=self.soup
+                packages=self.packages, devel=True, pages_data=self.soup
             )
 
         return self.__status_df
 
     @property
-    def downloads(self) -> pd.DataFrame:
+    def downloads(self) -> pd.DataFrame | None:
         """Get the download statitics of the packages.
 
         Returns:
@@ -155,10 +154,13 @@ class DashData:
         if self.__downloads_age is None or self.__downloads is None:
             try:
                 self.__downloads = get_download_stats(self.packages)
+                self.__downloads_age = time()
+            except BiocDownloadsError:
+                self.__downloads = None
+                self.__downloads_age = None
             except Exception as e:
-                raise ValueError(f"Invalid packages: {self.packages}",
-                                 f"Error: {e}")
-            self.__downloads_age = time()
+                print(f"Packages might be invalid: {self.packages}")
+                raise e
             return self.__downloads
 
         age = time() - self.__downloads_age
@@ -208,13 +210,16 @@ class DashData:
 
         if inv:
             sep = ", " if (n_inv := len(inv)) > 2 else ""
-            message = ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:]) \
-                if n_inv >= 2 else inv[0]
+            message = (
+                ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:])
+                if n_inv >= 2
+                else inv[0]
+            )
 
             st.warning(
-                f"{message} {'are' if n_inv > 1 else 'is'} not " +
-                f"{'a ' if n_inv == 1 else ''}valid Bioconductor package" +
-                f"{'s' if n_inv > 1 else ''}."
+                f"{message} {'are' if n_inv > 1 else 'is'} not "
+                + f"{'a ' if n_inv == 1 else ''}valid Bioconductor package"
+                + f"{'s' if n_inv > 1 else ''}."
             )
 
         self.update_packages(valid)
@@ -250,7 +255,7 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
 
 def chunker(seq, size):
     """Transform ['a', 'b' ,'c'] into ['a', 'b'], ['c'] if size is 2."""
-    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+    return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
 
 def run_dash():
@@ -259,91 +264,107 @@ def run_dash():
         page_title="Package Status Dashboard",
     )
     st.title("Package Status Dashboard")
-    st.write("""
+    st.write(
+        """
     ### A dashboard for monitoring Bioconductor packages.
-    """)
+    """
+    )
 
     package_input = st.text_input(
         label="Type in some Bioconductor packages separated by \
                spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
     )
-    if 'data' not in st.session_state:
+    if "data" not in st.session_state:
         with st.spinner("Scraping Bioconductor (this can take ~10 seconds)."):
             data = DashData()
             st.session_state["data"] = data
     else:
-        data = st.session_state['data']
+        data = st.session_state["data"]
 
     # assert isinstance(data, DashData)
 
     data.parse_input(package_input)
 
     if (age := (time() - data.soup_age) / (3600)) > 8:
-        st.warning("The scraped data are more than 8 hours old," +
-                   " consider refreshing the page.")
+        st.warning(
+            "The scraped data are more than 8 hours old,"
+            + " consider refreshing the page."
+        )
     else:
         st.info(
-            f"These data are about {round(age)}" +
-            f" hour{'' if round(age) == 1 else 's'} old."
+            f"These data are about {round(age)}"
+            + f" hour{'' if round(age) == 1 else 's'} old."
         )
 
     status_tab, download_tab, gh_tab = st.tabs(
-        ["Bioc Build Status", "Downloads", "GitHub Issues"])
+        ["Bioc Build Status", "Downloads", "GitHub Issues"]
+    )
 
     with status_tab:
         with st.spinner("Updating build status."):
             status_data = data.status_df
 
         for names in chunker(list(set(data.packages)), 20):
-            status_fig = alt.Chart(
-                status_data[status_data.Name.isin(names)]  # type: ignore
-            ).mark_square(  # type: ignore
-                size=500  # type: ignore
-            ).encode(
-                x="Name",
-                y=alt.Y(
-                    "Release:N", sort=("release", "devel")),  # type: ignore
-                color=alt.Color(
-                    "Log Level",  # type: ignore
-                    sort=["OK", "WARNINGS", "ERROR",
-                          "TIMEOUT"],  # type: ignore
-                    scale=alt.Scale(  # type: ignore
-                        domain=["OK", "WARNINGS", "ERROR",
-                                "TIMEOUT"],  # type: ignore
-                        range=[
-                            "green", "orange", "red", "purple"
-                        ]  # type: ignore
-                    )
+            status_fig = (
+                alt.Chart(status_data[status_data.Name.isin(names)])  # type: ignore
+                .mark_square(  # type: ignore
+                    size=500  # type: ignore
                 )
-            ).configure_axis(
-                labelFontSize=18
-            ).configure_legend(
-                orient='bottom'
-            ).properties(
-                height=350
+                .encode(
+                    x="Name",
+                    y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
+                    color=alt.Color(
+                        "Log Level",  # type: ignore
+                        sort=["OK", "WARNINGS", "ERROR", "TIMEOUT"],  # type: ignore
+                        scale=alt.Scale(  # type: ignore
+                            domain=[
+                                "OK",
+                                "WARNINGS",
+                                "ERROR",
+                                "TIMEOUT",
+                            ],  # type: ignore
+                            range=["green", "orange", "red", "purple"],  # type: ignore
+                        ),
+                    ),
+                )
+                .configure_axis(labelFontSize=18)
+                .configure_legend(orient="bottom")
+                .properties(height=350)
             )
 
             st.altair_chart(status_fig, use_container_width=True)
 
         st.write(
             "Click on a row to view the message details.",
-            " If it is missing, press `r`.")
+            " If it is missing, press `r`.",
+        )
         selection = aggrid_interactive_table(
-            status_df=status_data.sort_values(["Name"]))
+            status_df=status_data.sort_values(["Name"])
+        )
 
         if selection.selected_rows:
-            _, name, release, _, _,  log_level, stage, count, * \
-                messages = selection.selected_rows[0].values()
+            (
+                _,
+                name,
+                release,
+                _,
+                _,
+                log_level,
+                stage,
+                count,
+                *messages,
+            ) = selection.selected_rows[0].values()
             if log_level == "OK":
-                st.write(
-                    f"### No problems in the *{release}* build of **{name}**.")
+                st.write(f"### No problems in the *{release}* build of **{name}**.")
             elif log_level == "NOT FOUND":
-                st.write(
-                    f"### **{name}** was not found in Bioconductor.")
+                st.write(f"### **{name}** was not found in Bioconductor.")
             else:
                 # change warnings to warning if message count is smaller than 2
-                log_level = "warning" if (
-                    int(count) < 2 and "W" in log_level) else log_level.lower()
+                log_level = (
+                    "warning"
+                    if (int(count) < 2 and "W" in log_level)
+                    else log_level.lower()
+                )
                 st.write(f"### {name} had {count} {log_level} during {stage}.")
 
                 for i, message in enumerate(messages):
@@ -356,57 +377,70 @@ def run_dash():
         with st.spinner("Updating download stats."):
             dl_data = data.downloads
 
-        include = st.multiselect(
-            label="Choose which packages to include.",
-            options=dl_data.Name.unique(),  # type: ignore
-            default=dl_data.Name.unique()  # type: ignore
-        )
-        dates = st.slider(
-            label="Select a date range of interest.",
-            min_value=(min_v := min(dl_data.Date).date()),
-            max_value=(max_v := max(dl_data.Date).date()),
-            value=(min_v, max_v),
-            format="MMM YYYY",
-        )
-        log = st.checkbox("Log scale")
-        ips = st.checkbox("Distinct IPs")
-
-        min_date, max_date = [date(x.year, x.month, 1) for x in dates]
-
-        # dummy index of True
-        true_index = np.ones_like(dl_data.Downloads) == 1
-
-        pack_index = dl_data.Name.isin(  # type: ignore
-            include) if include else true_index
-        date_index = (dl_data.Date.dt.date >= min_date) & (
-            dl_data.Date.dt.date <= max_date)
-
-        index = pack_index * date_index
-
-        dl_fig = (
-            alt.Chart(
-                dl_data[index]
+        if dl_data is None:
+            st.warning(
+                """
+                    Download data could not be retrived.\n
+                    The Bioconductor download stats are probably unavilable.\n
+                    Please try again later.
+                """
             )
-            .mark_line()
-            .encode(
-                x="yearmonth(Date)",
-                y=alt.Y(
-                    "Downloads" if not ips else "Distinct IPs",  # type: ignore
-                    scale=alt.Scale(
-                        type="symlog" if log else "linear")  # type: ignore
-                ),
-                color="Name"
+            if st.button("Try Again"):
+                with st.spinner("Updating download stats."):
+                    dl_data = data.downloads
+
+                if dl_data:
+                    st.info("Success, reload the page.")
+        else:
+            include = st.multiselect(
+                label="Choose which packages to include.",
+                options=dl_data.Name.unique(),  # type: ignore
+                default=dl_data.Name.unique(),  # type: ignore
             )
-        ).properties(
-            height=400
-        )
+            dates = st.slider(
+                label="Select a date range of interest.",
+                min_value=(min_v := min(dl_data.Date).date()),  # type: ignore
+                max_value=(max_v := max(dl_data.Date).date()),  # type: ignore
+                value=(min_v, max_v),
+                format="MMM YYYY",
+            )
+            log = st.checkbox("Log scale")
+            ips = st.checkbox("Distinct IPs")
 
-        st.altair_chart(dl_fig, use_container_width=True)
+            min_date, max_date = [date(x.year, x.month, 1) for x in dates]
 
-        st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
+            # dummy index of True
+            true_index = np.ones_like(dl_data.Downloads) == 1
+
+            pack_index = (
+                dl_data.Name.isin(include) if include else true_index  # type: ignore
+            )
+            date_index = (dl_data.Date.dt.date >= min_date) & (
+                dl_data.Date.dt.date <= max_date
+            )
+
+            index = pack_index * date_index
+
+            dl_fig = (
+                alt.Chart(dl_data[index])
+                .mark_line()
+                .encode(
+                    x="yearmonth(Date)",
+                    y=alt.Y(
+                        "Downloads" if not ips else "Distinct IPs",  # type: ignore
+                        scale=alt.Scale(
+                            type="symlog" if log else "linear"  # type: ignore
+                        ),
+                    ),
+                    color="Name",
+                )
+            ).properties(height=400)
+
+            st.altair_chart(dl_fig, use_container_width=True)
+
+            st.download_button("Get data ", dl_data.to_csv(), "dl_data.csv")
 
     with gh_tab:
-
         with st.spinner("Updating GitHub data."):
             issue_data = data.github_issues
 
@@ -422,27 +456,28 @@ def run_dash():
             st.write(
                 "Could not find a repo link for: ",
                 missing_str,
-                ". ", "Consider pushing a bug report URL to Bioconductor."
+                ". ",
+                "Consider pushing a bug report URL to Bioconductor.",
             )
 
-        issue_plot_data = {k: len(v)
-                           for k, v in issue_data.items() if v is not None}
+        issue_plot_data = {k: len(v) for k, v in issue_data.items() if v is not None}
 
         issue_plot_data = pd.DataFrame(
-            {
-                "Name": issue_plot_data.keys(),
-                "Issue Count": issue_plot_data.values()
-            }
+            {"Name": issue_plot_data.keys(), "Issue Count": issue_plot_data.values()}
         ).set_index("Name")
 
-        issue_fig = px.bar(issue_plot_data, y="Issue Count",
-                           labels={"Name": ""},
-                           template="plotly_dark")
+        issue_fig = px.bar(
+            issue_plot_data,
+            y="Issue Count",
+            labels={"Name": ""},
+            template="plotly_dark",
+        )
         issue_fig.update_xaxes(tickangle=-90, ticks="outside")
 
         st.write(
             "**Click** on the plot below to see issues of intest.",
-            " If it is missing, press `r`.")
+            " If it is missing, press `r`.",
+        )
         with st.container():
             selected = plotly_events(issue_fig)
 
@@ -455,11 +490,11 @@ def run_dash():
             # st.write(selected_issues)
 
             if selected_issues:
-
                 for i, issue in enumerate(selected_issues):
                     st.write(
                         f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
-                        f" (#{issue.number})")
+                        f" (#{issue.number})",
+                    )
 
                     with st.expander("Show issue"):
                         st.markdown(issue.body.strip("\r"))
@@ -468,6 +503,7 @@ def run_dash():
                 st.write(f"{selected_name} has no issues!")
 
         # st.bar_chart(issue_plot_data)
+
 
 # %%
 
