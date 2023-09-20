@@ -336,7 +336,7 @@ def run_dash():
 
         st.write(
             "Click on a row to view the message details.",
-            " If it is missing, press `r`.",
+            " If there is no table  below, press `r`.",
         )
         selection = aggrid_interactive_table(
             status_df=status_data.sort_values(["Name"])
