@@ -191,9 +191,6 @@ class DashData:
 
         Args:
             user_input (str): The user input.
-
-        Returns:
-            list[str]: Parsed input.
         """
         input_list = user_input.strip().split(" ")
 
@@ -229,10 +226,10 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     """Create an st-aggrid interactive table based on a dataframe.
 
     Args:
-        df (pd.DataFrame]): Source dataframe
+        status_df (pd.DataFrame]): Source dataframe
 
     Returns:
-        dict: The selected row
+        AgGridReturn: The selected row
     """
     options = GridOptionsBuilder.from_dataframe(
         status_df, enableRowGroup=True, enableValue=True, enablePivot=True

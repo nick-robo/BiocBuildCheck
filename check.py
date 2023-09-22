@@ -46,9 +46,11 @@ def build_urls(
         path (str, optional):
             A URL path to append to the URLs (e.g. "index.html").
             Defaults to "".
+        long (bool, optional):
+            Whether to fetch the long report URL.
 
     Returns:
-        list[str]: _description_
+        list[str]: A list of URLs to be queried.
     """
     base = "https://bioconductor.org/checkResults"
     subdir = "bioc-LATEST"
@@ -103,13 +105,15 @@ def get_pages_data(
         devel (bool, optional):
             Whether to build devel URLs. Defaults to False.
         path (str, optional):
-        A URL path to append to the URLs (e.g. "index.html"). Defaults to "".
+            A URL path to append to the URLs (e.g. "index.html"). Defaults to "".
+        long (bool, optional):
+            Whether to fetch the long report URL.
 
     Raises:
         Exception: Failure to fetch the URL.
 
     Returns:
-        list[bs4.BeautifulSoup]: _description_
+        list[bs4.BeautifulSoup]: The page data (html) for the requested URLs.
     """
     urls = build_urls(
         package=package, release=release, devel=devel, path=path, long=long
