@@ -413,19 +413,34 @@ def get_issues(
     return result
 
 
-def get_package_list() -> list[str]:
+def get_package_list() -> pd.DataFrame:
+    folders: dict[str, str] = {
+        "bioc": "Software",
+        "workflows": "Workflow",
+        "data/experiment": "ExperimentData",
+        "data/annotation": "AnnotationData",
+    }
+    base = "https://bioconductor.org/packages/devel/"
+    path = "/src/contrib/PACKAGES"
+    urls = [base + f + path for f in folders.keys()]
+    paks: dict[str, str] = dict()
 
-    url = "https://bioconductor.org/packages/devel/bioc/src/contrib/PACKAGES"
-    page = requests.get(url, timeout=5)
-    if not page.ok:
-        raise Exception(f"Couldn't fetch url: {url}")
+    for pak_type, url in zip(folders.values(), urls):
+        page = requests.get(url, timeout=5)
+        if not page.ok:
+            raise Exception(f"Couldn't fetch url: {url}")
 
-    data = bs4.BeautifulSoup(page.content.decode("utf-8"), features="lxml")
+        data = bs4.BeautifulSoup(page.content.decode("utf-8"), features="lxml")
 
-    text: str = data.find_all("p")[0].text
-    paks = [x.lstrip("Package:").strip() for x in text.split("\n") if "Package: " in x]
+        text: str = data.find_all("p")[0].text
+        p = [x.lstrip("Package:").strip() for x in text.split("\n") if "Package: " in x]
+        paks.update(
+            dict.fromkeys(
+                p, pak_type
+            )
+        )
 
-    return paks
+    return pd.DataFrame({"Name": paks.keys(), "Type": paks.values()})
 
 
 # %%

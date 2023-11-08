@@ -199,23 +199,23 @@ class DashData:
         if isinstance(user_input, str):
             input_list = user_input.strip().split(" ")
 
-            pak_list, inv = [], []
+            valid, invalid = [], []
 
             for package in input_list:
                 if not package:
                     continue
 
                 if package not in self.valid_packages:
-                    inv.append(package)
+                    invalid.append(package)
                 else:
-                    pak_list.append(package)
+                    valid.append(package)
 
-            if inv:
-                sep = ", " if (n_inv := len(inv)) > 2 else ""
+            if invalid:
+                sep = ", " if (n_inv := len(invalid)) > 2 else ""
                 message = (
-                    ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:])
+                    ", ".join(invalid[:-2]) + sep + " and ".join(invalid[-2:])
                     if n_inv >= 2
-                    else inv[0]
+                    else invalid[0]
                 )
 
                 st.warning(
@@ -224,9 +224,9 @@ class DashData:
                     + f"{'s' if n_inv > 1 else ''}."
                 )
         else:
-            pak_list = user_input
+            valid = user_input
 
-        self.update_packages(pak_list)
+        self.update_packages(valid)
 
 
 def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
@@ -273,18 +273,23 @@ def run_dash():
     ### A dashboard for monitoring Bioconductor packages.
     """
     )
+
     # try to get a list of packages from Bioc
     with st.spinner("Getting the list of packages."):
-        try:
-            pak_list = get_package_list()
-        except Exception:
-            pak_list = None
+        if "pak_list" in st.session_state:
+            pak_list = st.session_state["pak_list"]
+        else:
+            try:
+                pak_list = get_package_list()
+            except Exception:
+                pak_list = None
 
     if pak_list:
         package_input = st.multiselect(
             label="Type in some Bioconductor packages.",
-            options=pak_list,
+            options=list(pak_list.Name),
         )
+        st.session_state["pak_list"] = pak_list
     else:
         package_input = st.text_input(
             label="Type in some Bioconductor packages separated by \
