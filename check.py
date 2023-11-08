@@ -82,7 +82,9 @@ def parse_log(log: str, status: str) -> list[str]:
     status = status if status != "WARNINGS" else "WARNING"
 
     log_array = list(
-        filter(lambda x: "DONE" not in x, filter(lambda x: status in x, log.split("*")))
+        filter(
+            lambda x: "DONE" not in x, filter(lambda x: status in x, log.split("\n*"))
+        )
     )
 
     return log_array
