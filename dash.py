@@ -369,8 +369,11 @@ def run_dash():
                     devel=not r
                 )
                 st.write(
-                    f"### {name} had {count} {level} during {stage}.\n",
-                    f"*[Check Report Link]({url})*"
+                    f"### {name} had {count} {level} during {stage}.\n"
+                )
+                st.link_button(
+                    label="Build Results Link",
+                    url=url[0]
                 )
 
                 for i, message in enumerate(messages):
