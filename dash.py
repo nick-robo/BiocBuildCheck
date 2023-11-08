@@ -284,7 +284,7 @@ def run_dash():
             except Exception:
                 pak_list = None
 
-    if pak_list:
+    if pak_list is not None:
         package_input = st.multiselect(
             label="Type in some Bioconductor packages.",
             options=list(pak_list.Name),
