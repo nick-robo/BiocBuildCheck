@@ -325,7 +325,9 @@ def get_download_stats(packages: pd.DataFrame | Iterable[str]) -> pd.DataFrame:
                 lambda df: pd.DataFrame(
                     {
                         "Name": df.Name,
-                        "Date": pd.to_datetime(df.Year.astype("str") + "-" + df.Month),
+                        "Date": pd.to_datetime(
+                            df.Year.astype("str") + "-" + df.Month, format="%Y-%b"
+                        ),
                         "Downloads": df.Nb_of_downloads,
                         "Distinct IPs": df.Nb_of_distinct_IPs,
                     }
