@@ -413,6 +413,21 @@ def get_issues(
     return result
 
 
+def get_package_list() -> list[str]:
+
+    url = "https://bioconductor.org/packages/devel/bioc/src/contrib/PACKAGES"
+    page = requests.get(url, timeout=5)
+    if not page.ok:
+        raise Exception(f"Couldn't fetch url: {url}")
+
+    data = bs4.BeautifulSoup(page.content.decode("utf-8"), features="lxml")
+
+    text: str = data.find_all("p")[0].text
+    paks = [x.lstrip("Package:").strip() for x in text.split("\n") if "Package: " in x]
+
+    return paks
+
+
 # %%
 
 

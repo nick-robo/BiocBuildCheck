@@ -25,6 +25,7 @@ from check import (
     get_pages_data,
     BiocDownloadsError,
     build_urls,
+    get_package_list,
 )
 
 # ignore fufturewarning thrown by AgGrid
@@ -187,40 +188,45 @@ class DashData:
 
         return self.__github_issues
 
-    def parse_input(self, user_input: str) -> None:
+    def parse_input(
+        self, user_input: str | list[str],
+    ) -> None:
         """Parse the user input.
 
         Args:
             user_input (str): The user input.
         """
-        input_list = user_input.strip().split(" ")
+        if isinstance(user_input, str):
+            input_list = user_input.strip().split(" ")
 
-        valid, inv = [], []
+            pak_list, inv = [], []
 
-        for package in input_list:
-            if not package:
-                continue
+            for package in input_list:
+                if not package:
+                    continue
 
-            if package not in self.valid_packages:
-                inv.append(package)
-            else:
-                valid.append(package)
+                if package not in self.valid_packages:
+                    inv.append(package)
+                else:
+                    pak_list.append(package)
 
-        if inv:
-            sep = ", " if (n_inv := len(inv)) > 2 else ""
-            message = (
-                ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:])
-                if n_inv >= 2
-                else inv[0]
-            )
+            if inv:
+                sep = ", " if (n_inv := len(inv)) > 2 else ""
+                message = (
+                    ", ".join(inv[:-2]) + sep + " and ".join(inv[-2:])
+                    if n_inv >= 2
+                    else inv[0]
+                )
 
-            st.warning(
-                f"{message} {'are' if n_inv > 1 else 'is'} not "
-                + f"{'a ' if n_inv == 1 else ''}valid Bioconductor package"
-                + f"{'s' if n_inv > 1 else ''}."
-            )
+                st.warning(
+                    f"{message} {'are' if n_inv > 1 else 'is'} not "
+                    + f"{'a ' if n_inv == 1 else ''}valid Bioconductor package"
+                    + f"{'s' if n_inv > 1 else ''}."
+                )
+        else:
+            pak_list = user_input
 
-        self.update_packages(valid)
+        self.update_packages(pak_list)
 
 
 def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
@@ -267,11 +273,24 @@ def run_dash():
     ### A dashboard for monitoring Bioconductor packages.
     """
     )
+    # try to get a list of packages from Bioc
+    with st.spinner("Getting the list of packages."):
+        try:
+            pak_list = get_package_list()
+        except Exception:
+            pak_list = None
 
-    package_input = st.text_input(
-        label="Type in some Bioconductor packages separated by \
-               spaces (e.g, BiocCheck BiocGenerics S4Vectors).",
-    )
+    if pak_list:
+        package_input = st.multiselect(
+            label="Type in some Bioconductor packages.",
+            options=pak_list,
+        )
+    else:
+        package_input = st.text_input(
+            label="Type in some Bioconductor packages separated by \
+                spaces (e.g, BiocCheck BiocGenerics S4Vectors)."
+        )
+
     if "data" not in st.session_state:
         with st.spinner("Scraping Bioconductor (this can take ~10 seconds)."):
             data = DashData()
@@ -359,22 +378,13 @@ def run_dash():
             else:
                 # change warnings to warning if message count is smaller than 2
                 level = (
-                    "warning"
-                    if (int(count) < 2 and "W" in level)
-                    else level.lower()
+                    "warning" if (int(count) < 2 and "W" in level) else level.lower()
                 )
                 url = build_urls(
-                    package=name,
-                    release=(r := release == "release"),
-                    devel=not r
+                    package=name, release=(r := release == "release"), devel=not r
                 )
-                st.write(
-                    f"### {name} had {count} {level} during {stage}.\n"
-                )
-                st.link_button(
-                    label="Build Results Link",
-                    url=url[0]
-                )
+                st.write(f"### {name} had {count} {level} during {stage}.\n")
+                st.link_button(label="Build Results Link", url=url[0])
 
                 for i, message in enumerate(messages):
                     if not message:
