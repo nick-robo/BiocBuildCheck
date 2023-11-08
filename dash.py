@@ -24,6 +24,7 @@ from check import (
     get_package_status,
     get_pages_data,
     BiocDownloadsError,
+    build_urls,
 )
 
 # ignore fufturewarning thrown by AgGrid
@@ -342,32 +343,40 @@ def run_dash():
         if selection.selected_rows:
             (
                 _,
-                name,
-                release,
+                name,  # package name
+                release,  # "release" or "devel"
                 _,
                 _,
-                log_level,
-                stage,
-                count,
-                *messages,
+                level,  # "OK", "WARNINGS", "TIMEOUT", "ERROR" or "NOT FOUND"
+                stage,  # "INSTALL", "BUILD", "CHECK" or BUILD BIN"
+                count,  # Number of warnings
+                *messages,  # Warning messages
             ) = selection.selected_rows[0].values()
-            if log_level == "OK":
+            if level == "OK":
                 st.write(f"### No problems in the *{release}* build of **{name}**.")
-            elif log_level == "NOT FOUND":
+            elif level == "NOT FOUND":
                 st.write(f"### **{name}** was not found in Bioconductor.")
             else:
                 # change warnings to warning if message count is smaller than 2
-                log_level = (
+                level = (
                     "warning"
-                    if (int(count) < 2 and "W" in log_level)
-                    else log_level.lower()
+                    if (int(count) < 2 and "W" in level)
+                    else level.lower()
                 )
-                st.write(f"### {name} had {count} {log_level} during {stage}.")
+                url = build_urls(
+                    package=name,
+                    release=(r := release == "release"),
+                    devel=not r
+                )
+                st.write(
+                    f"### {name} had {count} {level} during {stage}.\n",
+                    f"*[Check Report Link]({url})*"
+                )
 
                 for i, message in enumerate(messages):
                     if not message:
                         continue
-                    st.write(f"**{log_level.capitalize().strip('s')} {i+1}**")
+                    st.write(f"**{level.capitalize().strip('s')} {i+1}**")
                     st.code(message, language="r")
 
     with download_tab:
