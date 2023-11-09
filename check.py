@@ -13,6 +13,8 @@ import requests
 from github import Github
 from github.Issue import Issue
 
+from dash import DashData
+
 stage_dict = {
     "install": "install",
     "buildsrc": "build",
@@ -472,13 +474,15 @@ def get_package_list() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    with open("packages", "r", encoding="utf-8") as package_file:
-        sydneybiox_packages = package_file.read().splitlines()
+    data = DashData()
 
-    df = get_package_status(["BiocGenerics"], devel=True)
-    # get_info(df)
-    # pd.to_pickle(df, "saved.pkl")
-    # issues = get_issues(df)
+    df = get_package_status(
+        pd.DataFrame(
+            {"Name": ["BiocGenerics", "beta7"], "Type": ["Software", "ExperimentData"]}
+        ),
+        pages_data=data.soup,
+        devel=True,
+    )
 
     print(df)
 # %%
