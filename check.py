@@ -29,6 +29,7 @@ class BiocDownloadsError(ValueError):
 
 def build_urls(
     package: str = "",
+    type: str = "Software",
     release: bool = True,
     devel: bool = False,
     path: str = "",
@@ -39,6 +40,9 @@ def build_urls(
     Args:
         package (Optional[str], optional):
             Package of interest. Defaults to None.
+        type (str, optional):
+            A string indicating the package type, one of "Software", "Workflow",
+            or "ExperimentData"
         release (bool, optional):
             Whether to build release URLs. Defaults to True.
         devel (bool, optional):
@@ -52,9 +56,18 @@ def build_urls(
     Returns:
         list[str]: A list of URLs to be queried.
     """
+    folders: dict[str, str] = {
+        "Software": "bioc",
+        "Workflow": "workflows",
+        "ExperimentData": "data-experiment",
+    }
     base = "https://bioconductor.org/checkResults"
-    subdir = "bioc-LATEST"
-    long_report = base + "/{}/bioc-LATEST/long-report.html"
+    subdir = folders[type]
+    long_report = (
+        base
+        + "/{}"
+        + f"/{subdir}-LATEST/{'long-report.html' if subdir == 'bioc' else ''}"
+    )
 
     filter_list = [release, devel]
     releases = ["release", "devel"]
@@ -92,6 +105,7 @@ def parse_log(log: str, status: str) -> list[str]:
 
 def get_pages_data(
     package: str = "",
+    type: str = "Software",
     release: bool = True,
     devel: bool = False,
     path: str = "",
@@ -100,8 +114,11 @@ def get_pages_data(
     """Get the (HTML) page data of interest.
 
     Args:
-        package (Optional[str], optional):
+        package (str, optional):
             A package of interest. Defaults to None.
+        type (str, optional):
+            A string indicating the package type, one of "Software", "Workflow",
+            or "ExperimentData"
         release (bool, optional):
             Whether to build release URLs. Defaults to True.
         devel (bool, optional):
@@ -118,7 +135,7 @@ def get_pages_data(
         list[bs4.BeautifulSoup]: The page data (html) for the requested URLs.
     """
     urls = build_urls(
-        package=package, release=release, devel=devel, path=path, long=long
+        package=package, type=type, release=release, devel=devel, path=path, long=long
     )
 
     pages_data = []
