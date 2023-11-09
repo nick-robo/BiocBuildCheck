@@ -175,9 +175,9 @@ def get_log_messages(log_link: str, is_release: bool, status: str) -> list[str]:
 
 
 def get_package_status(
-    packages: Iterable[str],
+    packages: pd.DataFrame,
+    soups: dict[str, list[bs4.BeautifulSoup]],
     devel: bool = False,
-    pages_data: Optional[Iterable[bs4.BeautifulSoup]] = None,
 ) -> pd.DataFrame:
     """Build the package status data.
 
@@ -192,12 +192,10 @@ def get_package_status(
     Returns:
         pd.DataFrame: The package status data.
     """
-    if not pages_data:
-        pages_data = get_pages_data(devel=devel, long=True)
-
     status_dict = {}
     col_names = [
         "Name",
+        "Type",
         "Release",
         "Version",
         "Maintainer",
@@ -205,14 +203,24 @@ def get_package_status(
         "Stage",
         "Message Count",
     ]
+    types: list[str] = list(packages.Type.unique())
 
-    releases = ["release", "devel"] if devel else ["release"]
+    releases = (["release", "devel"] if devel else ["release"]) * len(types)
 
     i = None
     max_message_count = 0
 
+    pages_data = [
+        (soup, soup_type)
+        for soup_type, soup_list in soups.items()
+        if soup_type in types
+        for keep, soup in zip([True, devel], soup_list)
+        if keep
+    ]
+
     # iterate through the retrieved release logs
-    for release, soup in zip(releases, pages_data):
+    for release, (soup, soup_type) in zip(releases, pages_data):
+        paks = list(packages.Name[packages.Type == soup_type])
         # find each package link
         package_dict = {
             link.text: link
@@ -220,12 +228,13 @@ def get_package_status(
             if link
             and (href := link.get("href"))
             and "." in href
-            and link.text in packages
+            and link.text in paks
         }
+
         is_release = release == "release"
 
         # for each requested package
-        for name in packages:
+        for name in paks:
             i = 0 if i is None else i + 1
 
             if name not in package_dict.keys():
@@ -249,6 +258,7 @@ def get_package_status(
                 if status == "ok":
                     status_dict[i] = [
                         name,
+                        soup_type,
                         release,
                         version,
                         maintainer,
@@ -263,6 +273,7 @@ def get_package_status(
                 if not log_link:
                     status_dict[i] = [
                         name,
+                        soup_type,
                         release,
                         version,
                         maintainer,
@@ -281,6 +292,7 @@ def get_package_status(
 
                 status_dict[i] = [
                     name,
+                    soup_type,
                     release,
                     version,
                     maintainer,
@@ -470,17 +482,22 @@ def get_package_list() -> pd.DataFrame:
     return pd.DataFrame({"Name": paks.keys(), "Type": paks.values()})
 
 
+def __load_soups(dir: str = "cache") -> dict[str, list[bs4.BeautifulSoup]] | None:
+    raise NotImplementedError("Aaaaaaaaaaa, implement this")
+    return None
+
+
 # %%
 
 
 if __name__ == "__main__":
-    data = DashData()
+    data = __load_soups()
 
     df = get_package_status(
         pd.DataFrame(
             {"Name": ["BiocGenerics", "beta7"], "Type": ["Software", "ExperimentData"]}
         ),
-        pages_data=data.soup,
+        soups=data.soup,
         devel=True,
     )
 
