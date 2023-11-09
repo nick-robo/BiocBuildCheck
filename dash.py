@@ -43,58 +43,72 @@ class DashData:
                 A list of packages. Defaults to None (will load SydneyBioX
                 packages).
         """
-        makedirs("cache", exist_ok=True)
+        # load soup
+        self.soup: dict[str, list[BeautifulSoup]] = {
+            "Software": [],
+            "Workflow": [],
+            "ExperimentData": [],
+        }
+
+        self.soup_age: float = float("inf")
+
+        for type in self.soup.keys():
+            # ensure that the cache path exists
+            path = f"cache/{type}"
+            makedirs(path, exist_ok=True)
+
+            if exists(f"{path}/release.html") and exists(f"{path}/devel.html"):
+                # get the oldest (minimum) time of last modification.
+                mtime = min(
+                    getmtime(f"{path}/release.html"), getmtime(f"{path}/devel.html")
+                )
+
+                # ensure it is not older than 8 hours.
+                if (time() - mtime) / 3600 > 8:
+                    self.update_soup(type)
+                else:
+                    self.soup_age = mtime if mtime < self.soup_age else self.soup_age
+                    with open(f"{path}/release.html", "r") as rel:
+                        self.soup[type].append(BeautifulSoup(rel, features="lxml"))
+                    with open(f"{path}/devel.html", "r") as devel:
+                        self.soup[type].append(BeautifulSoup(devel, features="lxml"))
+            else:
+                self.update_soup(type)
+
+        self.valid_paks: pd.DataFrame
+        if "pak_list" in st.session_state:
+            self.valid_paks = st.session_state["pak_list"]
+        else:
+            self.valid_paks = get_package_list()
 
         if not packages:
             with open("packages", "r", encoding="utf-8") as file:
-                self.packages = file.read().splitlines()
-                self.sydneybiox_packs = set(self.packages.copy())
+                self.packages = self.valid_paks[
+                    self.valid_paks["Name"].isin(file.read().splitlines())
+                ]
+                self.sydneybiox_packs = self.packages.copy().drop_duplicates()
         else:
-            self.packages = packages
+            self.packages = self.valid_paks[self.valid_paks["Name"].isin(packages)]
 
-        # load soup
-        self.soup = []
-        if exists("cache/release.html") and exists("cache/devel.html"):
-            mtime = min(getmtime("cache/release.html"), getmtime("cache/devel.html"))
-
-            if (time() - mtime) / 3600 > 8:
-                self.update_soup()
-            else:
-                self.soup_age = mtime
-                with open("cache/release.html", "r") as rel:
-                    self.soup.append(BeautifulSoup(rel, features="lxml"))
-                with open("cache/devel.html", "r") as devel:
-                    self.soup.append(BeautifulSoup(devel, features="lxml"))
-        else:
-            self.update_soup()
-
-        self.valid_packages = [
-            link.text
-            for link in self.soup[1].find_all("a")
-            if link
-            and (href := link.get("href"))
-            and href[1:].strip("/") == link.text
-            and "." in href
-        ]
-
-        self.__status_df = get_package_status(
-            packages=self.packages, devel=True, pages_data=self.soup
-        )
+        # self.__status_df = get_package_status(
+        #     packages=self.packages, devel=True, pages_data=self.soup
+        # )
+        self.__status_df = None
 
         self.__downloads_age = None
         self.__downloads = None
         self.__github_age = None
         self.__github_issues = None
 
-    def update_soup(self) -> None:
+    def update_soup(self, type: str) -> None:
         """Update the Bioconductor build report data and store it."""
-        self.soup = get_pages_data(devel=True, long=True)
+        self.soup[type] = get_pages_data(type, devel=True, long=True)
         self.soup_age = time()
 
-        with open("cache/release.html", "w") as release:
-            release.write(str(self.soup[0]))
-        with open("cache/devel.html", "w") as devel:
-            devel.write(str(self.soup[1]))
+        with open(f"cache/{type}/release.html", "w") as release:
+            release.write(str(self.soup[type][0]))
+        with open(f"cache/{type}/devel.html", "w") as devel:
+            devel.write(str(self.soup[type][1]))
 
     def update_packages(self, packages: Iterable[str]) -> None:
         """Update package list in data.
@@ -189,7 +203,8 @@ class DashData:
         return self.__github_issues
 
     def parse_input(
-        self, user_input: str | list[str],
+        self,
+        user_input: str | list[str],
     ) -> None:
         """Parse the user input.
 
@@ -205,7 +220,7 @@ class DashData:
                 if not package:
                     continue
 
-                if package not in self.valid_packages:
+                if package not in self.valid_paks:
                     invalid.append(package)
                 else:
                     valid.append(package)
