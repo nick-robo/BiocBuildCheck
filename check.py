@@ -431,14 +431,26 @@ def get_issues(
 
 
 def get_package_list() -> pd.DataFrame:
+    """Get a list of all Bioconductor packages with build reports.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame containing each packages with it's corrisponding type, where type
+        is one of Software, Workflow or ExperimentData.
+
+    Raises
+    ------
+    Exception
+        Failure to contact Bioconductor.
+    """
     folders: dict[str, str] = {
         "bioc": "Software",
         "workflows": "Workflow",
         "data/experiment": "ExperimentData",
-        "data/annotation": "AnnotationData",
     }
     base = "https://bioconductor.org/packages/devel/"
-    path = "/src/contrib/PACKAGES"
+    path = "/VIEWS"
     urls = [base + f + path for f in folders.keys()]
     paks: dict[str, str] = dict()
 
@@ -451,11 +463,7 @@ def get_package_list() -> pd.DataFrame:
 
         text: str = data.find_all("p")[0].text
         p = [x.lstrip("Package:").strip() for x in text.split("\n") if "Package: " in x]
-        paks.update(
-            dict.fromkeys(
-                p, pak_type
-            )
-        )
+        paks.update(dict.fromkeys(p, pak_type))
 
     return pd.DataFrame({"Name": paks.keys(), "Type": paks.values()})
 
