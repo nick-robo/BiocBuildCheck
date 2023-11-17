@@ -1,7 +1,9 @@
 """Functions for scraping and parsing Bioconductor build reports."""
 # %%
 
+from genericpath import exists
 import os
+import pickle
 import re
 from datetime import datetime
 from typing import Iterable, Optional
@@ -481,15 +483,18 @@ def get_package_list() -> pd.DataFrame:
 
 
 def __load_soups(dir: str = "cache") -> dict[str, list[bs4.BeautifulSoup]]:
-    raise NotImplementedError("Aaaaaaaaaaa, implement this")
-    return None
+    if exists("soup.pkl"):
+        data: dict[str, list[bs4.BeautifulSoup]] = pickle.load(open("soup.pkl", "rb"))
+    else:
+        raise Exception("Pickle not found :(")
+    return data
 
 
 # %%
 
 
 if __name__ == "__main__":
-    data = __load_soups()
+    data = __load_soups()  # load the pickle :)
 
     df = get_package_status(
         pd.DataFrame(
