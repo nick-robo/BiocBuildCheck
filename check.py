@@ -13,8 +13,6 @@ import requests
 from github import Github
 from github.Issue import Issue
 
-from dash import DashData
-
 stage_dict = {
     "install": "install",
     "buildsrc": "build",
@@ -482,7 +480,7 @@ def get_package_list() -> pd.DataFrame:
     return pd.DataFrame({"Name": paks.keys(), "Type": paks.values()})
 
 
-def __load_soups(dir: str = "cache") -> dict[str, list[bs4.BeautifulSoup]] | None:
+def __load_soups(dir: str = "cache") -> dict[str, list[bs4.BeautifulSoup]]:
     raise NotImplementedError("Aaaaaaaaaaa, implement this")
     return None
 
@@ -497,7 +495,7 @@ if __name__ == "__main__":
         pd.DataFrame(
             {"Name": ["BiocGenerics", "beta7"], "Type": ["Software", "ExperimentData"]}
         ),
-        soups=data.soup,
+        soups=data,
         devel=True,
     )
 
