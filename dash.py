@@ -315,7 +315,7 @@ def run_dash():
             data = DashData()
             st.session_state["data"] = data
     else:
-        data = st.session_state["data"]
+        data: DashData = st.session_state["data"]
 
     # assert isinstance(data, DashData)
 
@@ -549,5 +549,5 @@ def run_dash():
 
 
 if __name__ == "__main__":
-    run_dash()
-    # data = DashData()
+    # run_dash()
+    data = DashData()
