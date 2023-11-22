@@ -35,7 +35,7 @@ simplefilter("ignore", FutureWarning)
 class DashData:
     """A container class for all the dash data which handles caching."""
 
-    def __init__(self, packages: Iterable[str] | None = None) -> None:
+    def __init__(self, package_list: Iterable[str] | None = None) -> None:
         """Create a DashData object.
 
         Args:
@@ -75,25 +75,23 @@ class DashData:
             else:
                 self.update_soup(type)
 
-        self.valid_paks: pd.DataFrame
         if "pak_list" in st.session_state:
-            self.valid_paks = st.session_state["pak_list"]
+            self.valid_paks: pd.DataFrame = st.session_state["pak_list"]
         else:
             self.valid_paks = get_package_list()
 
-        if not packages:
+        if not package_list:
             with open("packages", "r", encoding="utf-8") as file:
                 self.packages = self.valid_paks[
                     self.valid_paks["Name"].isin(file.read().splitlines())
                 ]
                 self.sydneybiox_packs = self.packages.copy().drop_duplicates()
         else:
-            self.packages = self.valid_paks[self.valid_paks["Name"].isin(packages)]
+            self.packages = self.valid_paks[self.valid_paks["Name"].isin(package_list)]
 
-        # self.__status_df = get_package_status(
-        #     packages=self.packages, devel=True, pages_data=self.soup
-        # )
-        self.__status_df = None
+        self.__status_df = get_package_status(
+            packages=self.packages, devel=True, soups=self.soup
+        )
 
         self.__downloads_age = None
         self.__downloads = None
@@ -110,26 +108,26 @@ class DashData:
         with open(f"cache/{type}/devel.html", "w") as devel:
             devel.write(str(self.soup[type][1]))
 
-    def update_packages(self, packages: Iterable[str]) -> None:
+    def update_packages(self, package_list: Iterable[str]) -> None:
         """Update package list in data.
 
         Args:
             packages (Iterable[str]): New packages.
         """
         # if packages is empty
-        if not packages:
-            if set(self.packages) == self.sydneybiox_packs:
+        if not package_list:
+            if set(self.packages.Name) == set(self.sydneybiox_packs.Name):
                 return
 
-            self.packages = list(self.sydneybiox_packs)
+            self.packages = self.sydneybiox_packs
             self.reset_data()
             return
 
         # do nothing if packs unchanged
-        if set(packages) == set(self.packages):
+        if set(package_list) == set(list(self.packages.Name)):
             return
 
-        self.packages = packages
+        self.packages = self.valid_paks[self.valid_paks["Name"].isin(package_list)]
         self.reset_data()
 
     def reset_data(self):
@@ -146,16 +144,17 @@ class DashData:
             pd.DataFrame: The package status data.
         """
         if (time() - self.soup_age) / 3600 > 8:
-            self.update_soup()
+            for type in self.soup.keys():
+                self.update_soup(type)
 
             self.__status_df = get_package_status(
-                packages=self.packages, devel=True, pages_data=self.soup
+                packages=self.packages, devel=True, soups=self.soup
             )
             return self.__status_df
 
         if self.__status_df is None:
             self.__status_df = get_package_status(
-                packages=self.packages, devel=True, pages_data=self.soup
+                packages=self.packages, devel=True, soups=self.soup
             )
 
         return self.__status_df
@@ -341,7 +340,7 @@ def run_dash():
         with st.spinner("Updating build status."):
             status_data = data.status_df
 
-        for names in chunker(list(set(data.packages)), 20):
+        for names in chunker(list(set(data.packages.Name)), 20):
             status_fig = (
                 alt.Chart(status_data[status_data.Name.isin(names)])  # type: ignore
                 .mark_square(  # type: ignore
@@ -383,6 +382,7 @@ def run_dash():
             (
                 _,
                 name,  # package name
+                pak_type,  # package type
                 release,  # "release" or "devel"
                 _,
                 _,
@@ -401,7 +401,8 @@ def run_dash():
                     "warning" if (int(count) < 2 and "W" in level) else level.lower()
                 )
                 url = build_urls(
-                    package=name, release=(r := release == "release"), devel=not r
+                    package=name, type=pak_type, release=(r := release == "release"),
+                    devel=not r
                 )
                 st.write(f"### {name} had {count} {level} during {stage}.\n")
                 st.link_button(label="Build Results Link", url=url[0])
