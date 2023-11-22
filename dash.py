@@ -102,7 +102,7 @@ class DashData:
 
     def update_soup(self, type: str) -> None:
         """Update the Bioconductor build report data and store it."""
-        self.soup[type] = get_pages_data(type, devel=True, long=True)
+        self.soup[type] = get_pages_data(type=type, devel=True, long=True)
         self.soup_age = time()
 
         with open(f"cache/{type}/release.html", "w") as release:
