@@ -64,11 +64,9 @@ def build_urls(
         "ExperimentData": "data-experiment",
     }
     base = "https://bioconductor.org/checkResults"
-    subdir = folders[type]
+    subdir = f"{folders[type]}-LATEST"
     long_report = (
-        base
-        + "/{}"
-        + f"/{subdir}-LATEST/{'long-report.html' if subdir == 'bioc' else ''}"
+        base + "/{}" + f"/{subdir}/{'long-report.html' if 'bioc' in subdir else ''}"
     )
 
     filter_list = [release, devel]
@@ -81,7 +79,9 @@ def build_urls(
     if not package and not path:
         return ["/".join([base, release, subdir]) + "/" for release in releases]
 
-    return ["/".join([base, *releases, subdir, package]) + "/" + path.strip(".")]
+    return [
+        "/".join([base, *releases, subdir, package]).rstrip("/") + "/" + path.strip(".")
+    ]
 
 
 def parse_log(log: str, status: str) -> list[str]:
@@ -153,18 +153,23 @@ def get_pages_data(
     return pages_data
 
 
-def get_log_messages(log_link: str, is_release: bool, status: str) -> list[str]:
+def get_log_messages(
+    log_link: str, is_release: bool, status: str, type: str
+) -> list[str]:
     """Get the log messages from a specified link.
 
     Args:
         log_link (str): Link to the log.
         is_release (bool): Flag indicating if link refers to release of devel.
         status (str): The log level of the error.
+        type (str): The software type.
 
     Returns:
         list[str]: A list of log messages.
     """
-    data = get_pages_data(release=is_release, devel=not is_release, path=log_link)[0]
+    data = get_pages_data(
+        type=type, release=is_release, devel=not is_release, path=log_link
+    )[0]
 
     log = pre.text.replace("â", "'") if (pre := data.find("pre")) else None
 
@@ -222,14 +227,21 @@ def get_package_status(
     for release, (soup, soup_type) in zip(releases, pages_data):
         paks = list(packages.Name[packages.Type == soup_type])
         # find each package link
-        package_dict = {
-            link.text: link
-            for link in soup.find_all("a")
-            if link
-            and (href := link.get("href"))
-            and "." in href
-            and link.text in paks
-        }
+        if soup_type == "Software":  # only need to check "." in href for Software
+            package_dict = {
+                link.text: link
+                for link in soup.find_all("a")
+                if link
+                and (href := link.get("href"))
+                and "." in href
+                and link.text in paks
+            }
+        else:
+            package_dict = {
+                link.text: link
+                for link in soup.find_all("a")
+                if link and link.get("href") and link.text in paks
+            }
 
         is_release = release == "release"
 
@@ -247,7 +259,10 @@ def get_package_status(
 
             # get package information
             version = link.parent.text.split("\xa0")[-1]
-            maintainer = link.parent.find_next_sibling("br").next
+            if soup_type == "Software":
+                maintainer = link.parent.find_next_sibling("br").next
+            else:
+                maintainer = link.parent.find_next("td").next
 
             # get the classes of card less "gcard".
             # the will be in ("ok", "warning", "error", "timeout")
@@ -255,6 +270,9 @@ def get_package_status(
 
             # for each package status
             for status in status_list:
+                if status == "gcard":
+                    continue
+
                 if status == "ok":
                     status_dict[i] = [
                         name,
@@ -267,7 +285,6 @@ def get_package_status(
                         0,
                     ]
                     break
-
                 log_link = card.find(class_=status.upper()).parent.get("href")
 
                 if not log_link:
@@ -286,7 +303,7 @@ def get_package_status(
                 stage = stage_dict[re.split(r"-|\.", log_link)[-2]]
                 status = status.upper()
                 # get log information
-                messages = get_log_messages(log_link, is_release, status)
+                messages = get_log_messages(log_link, is_release, status, soup_type)
                 message_count = len(messages)
                 max_message_count = max(message_count, max_message_count)
 
@@ -363,9 +380,8 @@ def get_download_stats(packages: pd.DataFrame | Iterable[str]) -> pd.DataFrame:
                         "Distinct IPs": df.Nb_of_distinct_IPs,
                     }
                 )
-            ).query(
-                "Date < @now"
-            )  # remove dates in the future
+            )
+            .query("Date < @now")  # remove dates in the future
         )
 
     if not dfs:
@@ -498,7 +514,10 @@ if __name__ == "__main__":
 
     df = get_package_status(
         pd.DataFrame(
-            {"Name": ["BiocGenerics", "beta7"], "Type": ["Software", "ExperimentData"]}
+            {
+                "Name": ["BiocGenerics", "beta7", "spicyWorkflow"],
+                "Type": ["Software", "ExperimentData", "Workflow"],
+            }
         ),
         soups=data,
         devel=True,
