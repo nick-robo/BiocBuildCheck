@@ -272,11 +272,6 @@ def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
     return selection
 
 
-def chunker(seq, size):
-    """Transform ['a', 'b' ,'c'] into ['a', 'b'], ['c'] if size is 2."""
-    return (seq[pos : pos + size] for pos in range(0, len(seq), size))
-
-
 def format_list(string_list: list[str]) -> str:
     """Format list into a syntactically correct string for displaying.
 
@@ -364,35 +359,57 @@ def run_dash():
         with st.spinner("Updating build status."):
             status_data = data.status_df
 
-        for names in chunker(list(set(data.packages.Name)), 20):
-            status_fig = (
-                alt.Chart(status_data[status_data.Name.isin(names)])  # type: ignore
-                .mark_square(  # type: ignore
-                    size=500  # type: ignore
+        if len(data.packages["Name"].unique()) >= 20:
+            both_ok: list[str] = (
+                status_data[status_data["Log Level"] == "OK"][["Name", "Release"]]
+                .groupby("Name")
+                .count()
+                .query("Release == 2")
+                .index.to_list()
+            )
+        else:
+            both_ok = []
+
+        if both_ok:
+            both_ok_string = format_list(both_ok)
+            st.info(
+                "".join(
+                    [
+                        both_ok_string,
+                        f" {'is' if len(both_ok) == 1 else 'are'} have been ommitted ",
+                        "from the plot since they have no warnings or errors.",
+                    ]
                 )
-                .encode(
-                    x="Name",
-                    y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
-                    color=alt.Color(
-                        "Log Level",  # type: ignore
-                        sort=["OK", "WARNINGS", "ERROR", "TIMEOUT"],  # type: ignore
-                        scale=alt.Scale(  # type: ignore
-                            domain=[
-                                "OK",
-                                "WARNINGS",
-                                "ERROR",
-                                "TIMEOUT",
-                            ],  # type: ignore
-                            range=["green", "orange", "red", "purple"],  # type: ignore
-                        ),
-                    ),
-                )
-                .configure_axis(labelFontSize=18)
-                .configure_legend(orient="bottom")
-                .properties(height=350)
             )
 
-            st.altair_chart(status_fig, use_container_width=True)
+        status_fig = (
+            alt.Chart(status_data[~(status_data.Name.isin(both_ok))])  # type: ignore
+            .mark_square(  # type: ignore
+                size=400  # type: ignore
+            )
+            .encode(
+                x="Name",
+                y=alt.Y("Release:N", sort=("release", "devel")),  # type: ignore
+                color=alt.Color(
+                    "Log Level",  # type: ignore
+                    sort=["OK", "WARNINGS", "ERROR", "TIMEOUT"],  # type: ignore
+                    scale=alt.Scale(  # type: ignore
+                        domain=[
+                            "OK",
+                            "WARNINGS",
+                            "ERROR",
+                            "TIMEOUT",
+                        ],  # type: ignore
+                        range=["green", "orange", "red", "purple"],  # type: ignore
+                    ),
+                ),
+            )
+            .configure_axis(labelFontSize=18)
+            .configure_legend(orient="bottom")
+            .properties(height=350)
+        )
+
+        st.altair_chart(status_fig, use_container_width=True)
 
         st.write(
             "Click on a row to view the message details.",
