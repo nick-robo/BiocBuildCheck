@@ -26,6 +26,7 @@ from check import (
     BiocDownloadsError,
     build_urls,
     get_package_list,
+    get_github_status,
 )
 
 # ignore fufturewarning thrown by AgGrid
@@ -276,6 +277,29 @@ def chunker(seq, size):
     return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
 
+def format_list(string_list: list[str]) -> str:
+    """Format list into a syntactically correct string for displaying.
+
+    Parameters
+    ----------
+    string_list : list[str]
+        A list of strings to be formatted.
+
+    Returns
+    -------
+    str
+        A string whish is ready to display to the end user.
+    """
+    copyied = list("*" + x + "*" for x in string_list.copy())
+
+    if len(string_list) <= 2:
+        return " and ".join(copyied)
+
+    last = copyied.pop()
+
+    return ", ".join(copyied) + ", and " + last
+
+
 def run_dash():
     """Generate the dashboard."""
     st.set_page_config(
@@ -401,8 +425,10 @@ def run_dash():
                     "warning" if (int(count) < 2 and "W" in level) else level.lower()
                 )
                 url = build_urls(
-                    package=name, type=pak_type, release=(r := release == "release"),
-                    devel=not r
+                    package=name,
+                    type=pak_type,
+                    release=(r := release == "release"),
+                    devel=not r,
                 )
                 st.write(f"### {name} had {count} {level} during {stage}.\n")
                 st.link_button(label="Build Results Link", url=url[0])
@@ -483,71 +509,85 @@ def run_dash():
     with gh_tab:
         with st.spinner("Updating GitHub data."):
             issue_data = data.github_issues
-
-        not_found = [key for key, value in issue_data.items() if value is None]
+            issue_df, not_found, no_issues = get_github_status(issue_data)
 
         if not_found:
             # st.write(not_found)
-            missing_str = (
-                " and ".join("*" + x + "*" for x in not_found)
-                if len(not_found) == 2
-                else ", ".join(not_found)
+            missing_str = format_list(not_found)
+            st.warning(
+                "".join(
+                    [
+                        "Could not find a repo link for: ",
+                        missing_str,
+                        ". ",
+                        "Consider pushing a bug report URL to Bioconductor.",
+                    ]
+                ),
             )
-            st.write(
-                "Could not find a repo link for: ",
-                missing_str,
-                ". ",
-                "Consider pushing a bug report URL to Bioconductor.",
+        # if there are no issues
+        if issue_df is None:
+            st.info("There are no issues to display!")
+        elif no_issues:
+            no_issues_str = format_list(no_issues)
+            st.info(
+                "".join(
+                    [
+                        no_issues_str,
+                        f" ha{'s' if len(no_issues) == 1 else 've'} no issues.",
+                    ]
+                )
             )
 
         issue_plot_data = {k: len(v) for k, v in issue_data.items() if v is not None}
 
-        issue_plot_data = pd.DataFrame(
-            {"Name": issue_plot_data.keys(), "Issue Count": issue_plot_data.values()}
-        ).set_index("Name")
+        if issue_df is not None:
+            issue_fig = px.bar(
+                issue_df,
+                x="Name",
+                color="Assigned",
+                hover_data=["Labelled", "Bug"],
+                template="plotly_dark",
+                labels={"count": "Issue Count"},
+                category_orders={"Assigned": ["Yes", "No"]},
+            )
 
-        issue_fig = px.bar(
-            issue_plot_data,
-            y="Issue Count",
-            labels={"Name": ""},
-            template="plotly_dark",
-        )
-        issue_fig.update_xaxes(tickangle=-90, ticks="outside")
+            issue_fig.update_xaxes(tickangle=-90, ticks="outside")
 
-        st.write(
-            "**Click** on the plot below to see issues of intest.",
-            " If it is missing, press `r`.",
-        )
-        with st.container():
-            selected = plotly_events(issue_fig)
+            with st.container():
+                selected = plotly_events(issue_fig)
 
-        if selected:
-            # st.write(selected)
+            issue_plot_data = pd.DataFrame(
+                {
+                    "Name": issue_plot_data.keys(),
+                    "Issue Count": issue_plot_data.values(),
+                }
+            ).set_index("Name")
 
-            selected_name = selected[0]["x"]
-            selected_issues = issue_data[selected_name]
+            if selected:
+                # st.write(selected)
 
-            # st.write(selected_issues)
+                selected_name = selected[0]["x"]
+                selected_issues = issue_data[selected_name]
 
-            if selected_issues:
-                for i, issue in enumerate(selected_issues):
-                    st.write(
-                        f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
-                        f" (#{issue.number})",
-                    )
+                # st.write(selected_issues)
 
-                    with st.expander("Show issue"):
-                        st.markdown(issue.body.strip("\r"))
+                if selected_issues:
+                    for i, issue in enumerate(selected_issues):
+                        st.write(
+                            f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
+                            f" (#{issue.number})",
+                        )
+                        if issue.body:
+                            with st.expander("Show issue"):
+                                st.markdown(issue.body.strip("\r"))
 
-            else:
-                st.write(f"{selected_name} has no issues!")
-
-        # st.bar_chart(issue_plot_data)
+                else:
+                    st.write(f"{selected_name} has no issues!")
 
 
 # %%
 
 
 if __name__ == "__main__":
-    # run_dash()
-    data = DashData()
+    run_dash()
+    # data = DashData()
