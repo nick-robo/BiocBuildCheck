@@ -460,6 +460,51 @@ def get_issues(
     return result
 
 
+def get_github_status(
+    query_results: dict[str, Optional[tuple[Issue]]]
+) -> tuple[pd.DataFrame | None, list[str], list[str]]:
+    """Generate a dataframe with the key issue characteristics and 2 lists containing the packages with no BugReport URLs and no issues respectively.
+
+    Parameters
+    ----------
+    query_results : dict[str, Optional[tuple[Issue]]]
+        The result of `get_issues`.
+
+    Returns
+    -------
+    tuple[pd.DataFrame | None, list[str], list[str]]
+        A DataFrame containing the issue details (None if no issues), a list of packages with no BugReport URL, and a list of packages with no issues.
+    """
+    detail_list = []
+    missing_list = []
+    no_issues = []
+
+    for pak, issues in query_results.items():
+        if issues is None:
+            missing_list.append(pak)
+            continue
+        # if issues is empty
+        if not issues:
+            no_issues.append(pak)
+            continue
+
+        for issue in issues:
+            detail_list.append(
+                {
+                    "Name": pak,
+                    "Title": issue.title,
+                    "Number": issue.number,
+                    "Labelled": "Yes" if (isLabled := bool(labs := issue.labels)) else "No",
+                    "Bug": "Yes" if ("bug" in labs[0].name if isLabled else False) else "No",
+                    "Assigned": "Yes" if (bool(issue.assignee)) else "No",
+                    "URL": issue.html_url,
+                }
+            )
+    df = pd.DataFrame(detail_list) if detail_list else None
+
+    return df, missing_list, no_issues
+
+
 def get_package_list() -> pd.DataFrame:
     """Get a list of all Bioconductor packages with build reports.
 
