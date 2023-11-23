@@ -463,7 +463,10 @@ def get_issues(
 def get_github_status(
     query_results: dict[str, Optional[tuple[Issue]]]
 ) -> tuple[pd.DataFrame | None, list[str], list[str]]:
-    """Generate a dataframe with the key issue characteristics and 2 lists containing the packages with no BugReport URLs and no issues respectively.
+    """Get the GitHub issue information for the dashboard.
+
+    Generate a dataframe with the key issue characteristics and 2 lists containing
+    the packages with no BugReport URLs and no issues respectively.
 
     Parameters
     ----------
@@ -473,7 +476,8 @@ def get_github_status(
     Returns
     -------
     tuple[pd.DataFrame | None, list[str], list[str]]
-        A DataFrame containing the issue details (None if no issues), a list of packages with no BugReport URL, and a list of packages with no issues.
+        A DataFrame containing the issue details (None if no issues), a list of
+        packages with no BugReport URL, and a list of packages with no issues.
     """
     detail_list = []
     missing_list = []
@@ -494,8 +498,10 @@ def get_github_status(
                     "Name": pak,
                     "Title": issue.title,
                     "Number": issue.number,
-                    "Labelled": "Yes" if (isLabled := bool(labs := issue.labels)) else "No",
-                    "Bug": "Yes" if ("bug" in labs[0].name if isLabled else False) else "No",
+                    "Labelled": "Yes" if (
+                        isLabled := bool(labs := issue.labels)) else "No",
+                    "Bug": "Yes" if (
+                        "bug" in labs[0].name if isLabled else False) else "No",
                     "Assigned": "Yes" if (bool(issue.assignee)) else "No",
                     "URL": issue.html_url,
                 }
