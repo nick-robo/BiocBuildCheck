@@ -570,7 +570,7 @@ def run_dash():
 
             issue_fig.update_xaxes(tickangle=-90, ticks="outside")
 
-            with st.container():
+            with st.expander("Plot", True):
                 selected = plotly_events(issue_fig)
 
             issue_plot_data = pd.DataFrame(
@@ -581,12 +581,10 @@ def run_dash():
             ).set_index("Name")
 
             if selected:
-                # st.write(selected)
-
                 selected_name = selected[0]["x"]
                 selected_issues = issue_data[selected_name]
 
-                # st.write(selected_issues)
+                st.write(f"### {selected_name}'s Issues")
 
                 if selected_issues:
                     for i, issue in enumerate(selected_issues):
