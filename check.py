@@ -402,7 +402,7 @@ def get_descrption_data(name: str) -> dict[str, str]:
     base = "https://bioconductor.org/packages/devel/bioc/html/"
 
     try:
-        data = pd.read_html(base + name + ".html", attrs={"class": "details"})[
+        data = pd.read_html(base + name + ".html", match="biocViews")[
             0
         ].fillna("")
     except Exception as e:
