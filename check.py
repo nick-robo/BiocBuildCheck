@@ -444,11 +444,11 @@ def get_issues(
             result[name] = None
             continue
 
-        if "BugReports" not in data.keys() or not data["BugReports"]:
+        if "Bug Reports" not in data.keys() or not data["Bug Reports"]:
             result[name] = None
             continue
 
-        url = urlparse(data["BugReports"])
+        url = urlparse(data["Bug Reports"])
 
         # 1. split the path: "/Org/Repo/issues" -> ["","Org","Repo","Issues"]
         # 2. filter: ["","Org","Repo","Issues"] -> ["Org","Repo"]
