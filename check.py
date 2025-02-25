@@ -273,7 +273,15 @@ def get_package_status(
                 if status == "gcard":
                     continue
 
-                if status == "ok":
+                log_link = card.find(class_=status.upper()).parent.get("href")
+
+                in_main = True
+
+                if isinstance(log_link, str):
+                    main_servers = ["nebbiolo", "palomino", "lconway"]
+                    in_main = any(s in log_link for s in main_servers)
+
+                if not in_main or status == "ok":
                     status_dict[i] = [
                         name,
                         soup_type,
@@ -285,7 +293,6 @@ def get_package_status(
                         0,
                     ]
                     break
-                log_link = card.find(class_=status.upper()).parent.get("href")
 
                 if not log_link:
                     status_dict[i] = [
