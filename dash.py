@@ -1,4 +1,5 @@
 """Runs a dashboard to visualise the build status of Bioconductor packages."""
+
 # %%
 from datetime import date
 from os.path import exists, getmtime
@@ -14,8 +15,6 @@ import plotly_express as px
 import streamlit as st
 from bs4 import BeautifulSoup
 from github.Issue import Issue
-from st_aggrid import AgGrid, AgGridReturn, ColumnsAutoSizeMode, GridOptionsBuilder
-from st_aggrid.shared import GridUpdateMode
 from streamlit_plotly_events import plotly_events
 
 from check import (
@@ -28,10 +27,6 @@ from check import (
     get_package_list,
     get_github_status,
 )
-
-# ignore fufturewarning thrown by AgGrid
-simplefilter("ignore", FutureWarning)
-
 
 class DashData:
     """A container class for all the dash data which handles caching."""
@@ -244,34 +239,6 @@ class DashData:
         self.update_packages(valid)
 
 
-def aggrid_interactive_table(status_df: pd.DataFrame) -> AgGridReturn:
-    """Create an st-aggrid interactive table based on a dataframe.
-
-    Args:
-        status_df (pd.DataFrame]): Source dataframe
-
-    Returns:
-        AgGridReturn: The selected row
-    """
-    options = GridOptionsBuilder.from_dataframe(
-        status_df, enableRowGroup=True, enableValue=True, enablePivot=True
-    )
-
-    options.configure_side_bar()
-
-    options.configure_selection("single")
-    selection = AgGrid(
-        status_df,
-        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-        gridOptions=options.build(),
-        theme="streamlit",
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        allow_unsafe_jscode=True,
-    )
-
-    return selection
-
-
 def format_list(string_list: list[str]) -> str:
     """Format list into a syntactically correct string for displaying.
 
@@ -413,13 +380,20 @@ def run_dash():
 
         st.write(
             "Click on a row to view the message details.",
-            " If there is no table  below, press `r`.",
+            " If there is no table below, press `r`.",
         )
-        selection = aggrid_interactive_table(
-            status_df=status_data.sort_values(["Name"])
+        event = st.dataframe(
+            status_data.sort_values(
+                by="Name", key=lambda col: col.str.lower()
+            ),
+            height=1000,
+            hide_index=True,
+            on_select="rerun",
+            # selection_mode="single-row",
         )
 
-        if selection.selected_rows:
+        if st.session_state.get("selected_row"):
+            selected_row = st.session_state["selected_row"]
             (
                 _,
                 name,  # package name
@@ -431,7 +405,7 @@ def run_dash():
                 stage,  # "INSTALL", "BUILD", "CHECK" or BUILD BIN"
                 count,  # Number of warnings
                 *messages,  # Warning messages
-            ) = selection.selected_rows[0].values()
+            ) = selected_row.values()
             if level == "OK":
                 st.write(f"### No problems in the *{release}* build of **{name}**.")
             elif level == "NOT FOUND":
@@ -453,7 +427,7 @@ def run_dash():
                 for i, message in enumerate(messages):
                     if not message:
                         continue
-                    st.write(f"**{level.capitalize().strip('s')} {i+1}**")
+                    st.write(f"**{level.capitalize().strip('s')} {i + 1}**")
                     st.code(message, language="r")
 
     with download_tab:
@@ -589,7 +563,7 @@ def run_dash():
                 if selected_issues:
                     for i, issue in enumerate(selected_issues):
                         st.write(
-                            f"**Issue {i+1}**: [{issue.title}]({issue.html_url})",
+                            f"**Issue {i + 1}**: [{issue.title}]({issue.html_url})",
                             f" (#{issue.number})",
                         )
                         if issue.body:
